@@ -12,50 +12,11 @@
 
 <body>
 
-    <header class="app-header">
-
-        <a href="../../index.php" class="logo">
-            InfraFix
-        </a>
-
-        <div class="app-header-actions">
-            <span>Citizen</span>
-            <a href="../auth/login.php">Logout</a>
-        </div>
-
-    </header>
-
+    <?php include '../../includes/header.php'; ?>
 
     <main class="app-layout">
 
-        <aside class="sidebar">
-
-            <nav class="sidebar-nav">
-
-                <a href="home.php" class="nav-item active">
-                    Home
-                </a>
-
-                <a href="#" class="nav-item">
-                    Report Issue
-                </a>
-
-                <a href="#" class="nav-item">
-                    My Reports
-                </a>
-
-                <a href="#" class="nav-item">
-                    Map
-                </a>
-
-                <a href="#" class="nav-item">
-                    Profile
-                </a>
-
-            </nav>
-
-        </aside>
-
+        <?php include '../../includes/sidebar.php'; ?>
 
         <section class="app-content">
 
@@ -126,27 +87,7 @@
 
     </main>
 
-
-    <nav class="mobile-nav">
-
-        <a href="home.php" class="active">
-            Home
-        </a>
-
-        <a href="#">
-            Report
-        </a>
-
-        <a href="#">
-            Map
-        </a>
-
-        <a href="#">
-            Profile
-        </a>
-
-    </nav>
-
+    <?php include '../../includes/mobile-nav.php'; ?>
 
     <script src="../../assets/js/app.js"></script>
 
