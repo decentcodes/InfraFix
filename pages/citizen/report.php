@@ -99,15 +99,20 @@
                     <div class="form-group">
 
                         <label for="issue-description">
-                            Description
+                            Description <span>(Optional)</span>
                         </label>
 
                         <textarea
                             id="issue-description"
                             name="description"
                             rows="5"
-                            placeholder="Describe the issue..."
+                            maxlength="500"
+                            placeholder="Add any additional information that may help the authority understand the issue."
                         ></textarea>
+
+                        <p class="form-hint">
+                            Maximum 500 characters.
+                        </p>
 
                     </div>
 
@@ -172,6 +177,10 @@
                             capture="environment"
                             required
                         >
+
+                        <p class="form-hint">
+                            Maximum file size: 5 MB.
+                        </p>
 
                     </div>
 
