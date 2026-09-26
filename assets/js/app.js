@@ -1,7 +1,12 @@
 console.log("InfraFix loaded.");
 
+const latitudeInput = document.querySelector("#latitude");
+const longitudeInput = document.querySelector("#longitude");
+
 const locationButton = document.querySelector("#get-location");
 const locationStatus = document.querySelector("#location-status");
+
+const reportForm = document.querySelector(".report-form");
 
 if (locationButton && locationStatus) {
     locationButton.addEventListener("click", () => {
@@ -20,6 +25,9 @@ if (locationButton && locationStatus) {
 
                 const latitude = position.coords.latitude;
                 const longitude = position.coords.longitude;
+
+                latitudeInput.value = latitude;
+                longitudeInput.value = longitude;
 
                 locationStatus.textContent =
                     `Location detected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
@@ -53,6 +61,23 @@ if (locationButton && locationStatus) {
                 }
             }
         );
+    });
+}
+
+
+if (reportForm) {
+    reportForm.addEventListener("submit", (event) => {
+
+        if (!latitudeInput.value || !longitudeInput.value) {
+            event.preventDefault();
+
+            locationStatus.textContent =
+                "Please allow location access before submitting the report.";
+
+            locationButton.focus();
+
+            return;
+        }
     });
 }
 

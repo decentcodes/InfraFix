@@ -40,7 +40,12 @@
             </div>
 
 
-            <form class="report-form">
+            <form
+                class="report-form"
+                action="../../api/report-submit.php"
+                method="POST"
+                enctype="multipart/form-data"
+            >
 
                 <div class="form-section">
 
@@ -129,6 +134,18 @@
                     <p id="location-status" class="form-status">
                         Location not detected yet.
                     </p>
+
+                    <input
+                        type="hidden"
+                        id="latitude"
+                        name="latitude"
+                    >
+
+                    <input
+                        type="hidden"
+                        id="longitude"
+                        name="longitude"
+                    >
 
                 </div>
 
