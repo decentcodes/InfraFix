@@ -15,3 +15,20 @@ CREATE TABLE categories (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
+
+CREATE TABLE regions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    region_id VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    region_type VARCHAR(50) NOT NULL,
+    parent_region_id INT UNSIGNED NULL,
+    boundary POLYGON SRID 4326 NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_regions_parent
+        FOREIGN KEY (parent_region_id)
+        REFERENCES regions(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
