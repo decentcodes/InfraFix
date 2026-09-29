@@ -1,0 +1,3 @@
+-- InfraFix V1 seed data
+-- Category and configuration data will be added here
+-- after the database schema has been finalized.
