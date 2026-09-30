@@ -283,3 +283,138 @@ CREATE TABLE resolution_feedback (
     CONSTRAINT chk_resolution_feedback_rating
         CHECK (rating BETWEEN 1 AND 5)
 ) ENGINE=InnoDB;
+
+CREATE TABLE priority_factors (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    factor_id VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(50) NOT NULL UNIQUE,
+    max_level DECIMAL(5, 2) NOT NULL,
+    max_contribution DECIMAL(6, 2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+CREATE TABLE category_priority_baselines (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    category_id INT UNSIGNED NOT NULL,
+    factor_id INT UNSIGNED NOT NULL,
+    base_level DECIMAL(5, 2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_category_priority_baselines_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_category_priority_baselines_factor
+        FOREIGN KEY (factor_id)
+        REFERENCES priority_factors(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_category_priority_baseline
+        UNIQUE (category_id, factor_id)
+) ENGINE=InnoDB;
+
+
+CREATE TABLE priority_report_levels (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    min_reports INT UNSIGNED NOT NULL,
+    max_reports INT UNSIGNED NULL,
+    level DECIMAL(5, 2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+CREATE TABLE priority_duration_levels (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    min_days INT UNSIGNED NOT NULL,
+    max_days INT UNSIGNED NULL,
+    level DECIMAL(5, 2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+CREATE TABLE poi_types (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    poi_type_id VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    base_criticality DECIMAL(5, 2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+CREATE TABLE poi_distance_rules (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    min_distance_m DECIMAL(8, 2) NOT NULL,
+    max_distance_m DECIMAL(8, 2) NULL,
+    distance_factor DECIMAL(4, 2) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+
+CREATE TABLE priority_weather_rules (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    category_id INT UNSIGNED NOT NULL,
+    weather_condition VARCHAR(30) NOT NULL,
+    context_level DECIMAL(5, 2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_priority_weather_rules_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_priority_weather_rule
+        UNIQUE (category_id, weather_condition)
+) ENGINE=InnoDB;
+
+
+CREATE TABLE issue_priority_scores (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    issue_priority_score_id VARCHAR(20) NOT NULL UNIQUE,
+    issue_id INT UNSIGNED NOT NULL,
+    priority_score DECIMAL(6, 2) NOT NULL,
+    calculated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_issue_priority_scores_issue
+        FOREIGN KEY (issue_id)
+        REFERENCES issues(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_issue_priority_score
+        UNIQUE (issue_id)
+) ENGINE=InnoDB;
+
+
+CREATE TABLE issue_priority_score_factors (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    issue_priority_score_id INT UNSIGNED NOT NULL,
+    factor_id INT UNSIGNED NOT NULL,
+    factor_level DECIMAL(5, 2) NOT NULL,
+    contribution DECIMAL(7, 2) NOT NULL,
+
+    CONSTRAINT fk_issue_priority_score_factors_score
+        FOREIGN KEY (issue_priority_score_id)
+        REFERENCES issue_priority_scores(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_issue_priority_score_factors_factor
+        FOREIGN KEY (factor_id)
+        REFERENCES priority_factors(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_issue_priority_score_factor
+        UNIQUE (issue_priority_score_id, factor_id)
+) ENGINE=InnoDB;
