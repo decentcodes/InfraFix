@@ -32,3 +32,160 @@ CREATE TABLE regions (
         ON UPDATE CASCADE
         ON DELETE RESTRICT
 ) ENGINE=InnoDB;
+
+CREATE TABLE authorities (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    authority_id VARCHAR(20) NOT NULL UNIQUE,
+    public_name VARCHAR(150) NOT NULL,
+    phone VARCHAR(15) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    parent_authority_id INT UNSIGNED NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_authorities_parent
+        FOREIGN KEY (parent_authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE authority_regions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    authority_id INT UNSIGNED NOT NULL,
+    region_id INT UNSIGNED NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_authority_regions_authority
+        FOREIGN KEY (authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_authority_regions_region
+        FOREIGN KEY (region_id)
+        REFERENCES regions(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_authority_region
+        UNIQUE (authority_id, region_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE authority_categories (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    authority_id INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_authority_categories_authority
+        FOREIGN KEY (authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_authority_categories_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT uq_authority_category
+        UNIQUE (authority_id, category_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE issues (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    issue_id VARCHAR(20) NOT NULL UNIQUE,
+    category_id INT UNSIGNED NOT NULL,
+    region_id INT UNSIGNED NOT NULL,
+    authority_id INT UNSIGNED NOT NULL,
+    latitude DECIMAL(10, 7) NOT NULL,
+    longitude DECIMAL(10, 7) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Open',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_issues_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_issues_region
+        FOREIGN KEY (region_id)
+        REFERENCES regions(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_issues_authority
+        FOREIGN KEY (authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT chk_issues_status
+        CHECK (status IN (
+            'Open',
+            'In Progress',
+            'Resolved',
+            'Closed',
+            'Rejected'
+        ))
+) ENGINE=InnoDB;
+
+CREATE TABLE reports (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    report_id VARCHAR(20) NOT NULL UNIQUE,
+    issue_id INT UNSIGNED NOT NULL,
+    citizen_id INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    reported_latitude DECIMAL(10, 7) NOT NULL,
+    reported_longitude DECIMAL(10, 7) NOT NULL,
+    reporter_latitude DECIMAL(10, 7) NOT NULL,
+    reporter_longitude DECIMAL(10, 7) NOT NULL,
+    location_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    location_verification_distance_m DECIMAL(8, 3) NULL,
+    reported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_reports_issue
+        FOREIGN KEY (issue_id)
+        REFERENCES issues(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_reports_citizen
+        FOREIGN KEY (citizen_id)
+        REFERENCES citizens(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_reports_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE report_photos (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    report_photo_id VARCHAR(20) NOT NULL UNIQUE,
+    report_id INT UNSIGNED NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(50) NOT NULL,
+    file_size INT UNSIGNED NOT NULL,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_report_photos_report
+        FOREIGN KEY (report_id)
+        REFERENCES reports(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
