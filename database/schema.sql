@@ -189,3 +189,97 @@ CREATE TABLE report_photos (
         ON UPDATE CASCADE
         ON DELETE RESTRICT
 ) ENGINE=InnoDB;
+
+CREATE TABLE issue_status_history (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    issue_status_history_id VARCHAR(20) NOT NULL UNIQUE,
+    issue_id INT UNSIGNED NOT NULL,
+    previous_status VARCHAR(20) NULL,
+    new_status VARCHAR(20) NOT NULL,
+    changed_by_authority_id INT UNSIGNED NULL,
+    remark VARCHAR(500) NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_status_history_issue
+        FOREIGN KEY (issue_id)
+        REFERENCES issues(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_status_history_authority
+        FOREIGN KEY (changed_by_authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT chk_status_history_previous
+        CHECK (
+            previous_status IS NULL
+            OR previous_status IN (
+                'Open',
+                'In Progress',
+                'Resolved',
+                'Closed',
+                'Rejected'
+            )
+        ),
+
+    CONSTRAINT chk_status_history_new
+        CHECK (
+            new_status IN (
+                'Open',
+                'In Progress',
+                'Resolved',
+                'Closed',
+                'Rejected'
+            )
+        )
+) ENGINE=InnoDB;
+
+CREATE TABLE issue_resolutions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    resolution_id VARCHAR(20) NOT NULL UNIQUE,
+    issue_id INT UNSIGNED NOT NULL,
+    authority_id INT UNSIGNED NOT NULL,
+    remark VARCHAR(500) NOT NULL,
+    resolved_at TIMESTAMP NOT NULL,
+    evidence_path VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_issue_resolutions_issue
+        FOREIGN KEY (issue_id)
+        REFERENCES issues(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_issue_resolutions_authority
+        FOREIGN KEY (authority_id)
+        REFERENCES authorities(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE resolution_feedback (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    feedback_id VARCHAR(20) NOT NULL UNIQUE,
+    resolution_id INT UNSIGNED NOT NULL,
+    citizen_id INT UNSIGNED NOT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    comment VARCHAR(500) NULL,
+    submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_resolution_feedback_resolution
+        FOREIGN KEY (resolution_id)
+        REFERENCES issue_resolutions(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_resolution_feedback_citizen
+        FOREIGN KEY (citizen_id)
+        REFERENCES citizens(id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT chk_resolution_feedback_rating
+        CHECK (rating BETWEEN 1 AND 5)
+) ENGINE=InnoDB;
