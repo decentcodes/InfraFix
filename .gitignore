@@ -1,5 +1,6 @@
 # Local configuration / secrets
 includes/config.php
+includes/db.php
 
 # Environment files
 .env

@@ -1,7 +1,7 @@
 -- InfraFix V1 seed data
 -- Finalized prioritization configuration
 
-USE infrafix;
+USE INFRAFIX;
 
 
 -- ============================================================

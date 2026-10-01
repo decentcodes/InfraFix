@@ -1,12 +1,166 @@
 console.log("InfraFix loaded.");
 
-const latitudeInput = document.querySelector("#latitude");
-const longitudeInput = document.querySelector("#longitude");
+const reporterLatitudeInput =
+    document.querySelector("#reporter-latitude");
 
-const locationButton = document.querySelector("#get-location");
-const locationStatus = document.querySelector("#location-status");
+const reporterLongitudeInput =
+    document.querySelector("#reporter-longitude");
 
-const reportForm = document.querySelector(".report-form");
+const reportedLatitudeInput =
+    document.querySelector("#reported-latitude");
+
+const reportedLongitudeInput =
+    document.querySelector("#reported-longitude");
+
+const locationButton =
+    document.querySelector("#get-location");
+
+const locationStatus =
+    document.querySelector("#location-status");
+
+const reportMap =
+    document.querySelector("#report-map");
+
+const reportForm =
+    document.querySelector(".report-form");
+
+let map = null;
+let reporterMarker = null;
+let issueMarker = null;
+let verificationCircle = null;
+let issueMarkers = [];
+
+
+function updateIssueLocation(latitude, longitude) {
+    reportedLatitudeInput.value = latitude;
+    reportedLongitudeInput.value = longitude;
+
+    locationStatus.textContent =
+        `Issue location selected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+}
+
+
+function initializeMap(latitude, longitude) {
+    if (!map) {
+        map = L.map("report-map").setView([latitude, longitude], 18);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+
+        // Blue marker: reporter's current location
+        reporterMarker = L.circleMarker([latitude, longitude], {
+            radius: 8,
+            color: "#2563eb",
+            fillColor: "#2563eb",
+            fillOpacity: 1,
+            weight: 2
+        }).addTo(map);
+
+        reporterMarker.bindTooltip("Your current location");
+
+        // 50 metre verification radius
+        verificationCircle = L.circle([latitude, longitude], {
+            radius: 50,
+            color: "#2563eb",
+            fillColor: "#2563eb",
+            fillOpacity: 0.08,
+            weight: 2
+        }).addTo(map);
+
+        // Red marker: issue location
+        issueMarker = L.marker([latitude, longitude], {
+            draggable: true
+        }).addTo(map);
+
+        issueMarker.bindTooltip("Issue location");
+
+        issueMarker.on("dragend", function () {
+            const position = issueMarker.getLatLng();
+
+            updateIssueLocation(
+                position.lat,
+                position.lng
+            );
+        });
+    } else {
+        reporterMarker.setLatLng([latitude, longitude]);
+        verificationCircle.setLatLng([latitude, longitude]);
+
+        issueMarker.setLatLng([latitude, longitude]);
+
+        map.setView([latitude, longitude], 18);
+    }
+
+    updateIssueLocation(latitude, longitude);
+    loadNearbyIssues(latitude, longitude);
+}
+
+async function loadNearbyIssues(latitude, longitude) {
+    try {
+        const response = await fetch(
+            `../../api/issues-nearby.php?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}`
+        );
+
+        const result = await response.json();
+
+        if (!result.success) {
+            console.error(
+                "Could not load nearby issues:",
+                result.message
+            );
+
+            return;
+        }
+
+        // Remove existing Issue markers before refreshing them.
+        issueMarkers.forEach((marker) => {
+            map.removeLayer(marker);
+        });
+
+        issueMarkers = [];
+
+        result.issues.forEach((issue) => {
+            const issueIcon = L.divIcon({
+                className: "existing-issue-marker",
+                html: "<div></div>",
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+                popupAnchor: [0, -9]
+            });
+
+            const marker = L.marker(
+                [
+                    parseFloat(issue.latitude),
+                    parseFloat(issue.longitude)
+                ],
+                {
+                    icon: issueIcon
+                }
+            );
+
+            marker.bindPopup(`
+                <strong>${issue.category}</strong><br>
+                Status: ${issue.status}<br>
+                Issue ID: ${issue.issue_id}
+            `);
+
+            marker.addTo(map);
+
+            issueMarkers.push(marker);
+        });
+
+        console.log(
+            `Loaded ${result.count} nearby issue(s).`
+        );
+
+    } catch (error) {
+        console.error(
+            "Error loading nearby issues:",
+            error
+        );
+    }
+}
 
 if (locationButton && locationStatus) {
     locationButton.addEventListener("click", () => {
@@ -23,17 +177,35 @@ if (locationButton && locationStatus) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
 
-                const latitude = position.coords.latitude;
-                const longitude = position.coords.longitude;
+                const latitude =
+                    position.coords.latitude;
 
-                latitudeInput.value = latitude;
-                longitudeInput.value = longitude;
+                const longitude =
+                    position.coords.longitude;
 
-                locationStatus.textContent =
-                    `Location detected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                // Store the reporter's actual GPS location.
+                reporterLatitudeInput.value =
+                    latitude;
 
-                console.log("Latitude:", latitude);
-                console.log("Longitude:", longitude);
+                reporterLongitudeInput.value =
+                    longitude;
+
+                // Initially place the issue marker
+                // at the reporter's location.
+                initializeMap(
+                    latitude,
+                    longitude
+                );
+
+                console.log(
+                    "Reporter latitude:",
+                    latitude
+                );
+
+                console.log(
+                    "Reporter longitude:",
+                    longitude
+                );
             },
 
             (error) => {
@@ -66,17 +238,110 @@ if (locationButton && locationStatus) {
 
 
 if (reportForm) {
-    reportForm.addEventListener("submit", (event) => {
+    reportForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
 
-        if (!latitudeInput.value || !longitudeInput.value) {
-            event.preventDefault();
-
+        if (
+            !reporterLatitudeInput.value ||
+            !reporterLongitudeInput.value
+        ) {
             locationStatus.textContent =
                 "Please allow location access before submitting the report.";
 
             locationButton.focus();
+            return;
+        }
+
+        if (
+            !reportedLatitudeInput.value ||
+            !reportedLongitudeInput.value
+        ) {
+            locationStatus.textContent =
+                "Please select the issue location on the map.";
 
             return;
+        }
+
+        const formData = new FormData(reportForm);
+
+        try {
+            const response = await fetch(
+                "../../api/report-submit.php",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+            const result = await response.json();
+
+            console.log("Server response:", result);
+
+            if (!result.success) {
+                alert(result.message);
+                return;
+            }
+
+            if (result.report.nearby_issue_found) {
+                const sameIssue = confirm(
+                    "A similar issue has already been reported nearby.\n\n" +
+                    "Is this the same issue?"
+                );
+
+                // Send the citizen's decision back to the server.
+                formData.set(
+                    "use_existing_issue",
+                    sameIssue ? "1" : "0"
+                );
+
+                // Submit the decision to the server.
+                try {
+                    const finalResponse = await fetch(
+                        "../../api/report-submit.php",
+                        {
+                            method: "POST",
+                            body: formData
+                        }
+                    );
+
+                    const finalResult = await finalResponse.json();
+
+                    console.log(
+                        "Final submission response:",
+                        finalResult
+                    );
+
+                    if (!finalResult.success) {
+                        alert(finalResult.message);
+                        return;
+                    }
+
+                    alert(finalResult.message);
+
+                } catch (error) {
+                    console.error(
+                        "Final submission error:",
+                        error
+                    );
+
+                    alert(
+                        "Something went wrong while submitting the report."
+                    );
+                }
+
+                return;
+            }
+
+            console.log(
+                "No nearby existing issue found. Proceeding as a new issue."
+            );
+
+        } catch (error) {
+            console.error("Submission error:", error);
+
+            alert(
+                "Something went wrong while submitting the report."
+            );
         }
     });
 }

@@ -8,6 +8,11 @@
     <title>Report an Issue — InfraFix</title>
 
     <link rel="stylesheet" href="../../assets/css/style.css">
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
 </head>
 
 <body>
@@ -124,8 +129,8 @@
                     <h2>Location</h2>
 
                     <p>
-                        InfraFix uses your current location to associate
-                        the report with the correct area.
+                        First detect your current location, then place the pin
+                        on the map where the issue is actually located.
                     </p>
 
                     <button
@@ -140,16 +145,40 @@
                         Location not detected yet.
                     </p>
 
+                    <div
+                        id="report-map"
+                        class="report-map"
+                        aria-label="Map for selecting the issue location"
+                    ></div>
+
+                    <p class="form-hint">
+                        Drag the marker to the exact location of the issue.
+                    </p>
+
+                    <!-- Current GPS location of the reporter -->
                     <input
                         type="hidden"
-                        id="latitude"
-                        name="latitude"
+                        id="reporter-latitude"
+                        name="reporter_latitude"
                     >
 
                     <input
                         type="hidden"
-                        id="longitude"
-                        name="longitude"
+                        id="reporter-longitude"
+                        name="reporter_longitude"
+                    >
+
+                    <!-- Location selected by the reporter -->
+                    <input
+                        type="hidden"
+                        id="reported-latitude"
+                        name="reported_latitude"
+                    >
+
+                    <input
+                        type="hidden"
+                        id="reported-longitude"
+                        name="reported_longitude"
                     >
 
                 </div>
@@ -211,7 +240,9 @@
 
     <?php include '../../includes/mobile-nav.php'; ?>
 
-
+    <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    ></script>
     <script src="../../assets/js/app.js"></script>
 
 </body>
