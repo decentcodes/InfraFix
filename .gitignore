@@ -1,6 +1,7 @@
 # Local configuration / secrets
 includes/config.php
 includes/db.php
+uploads/
 
 # Environment files
 .env
