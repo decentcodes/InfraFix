@@ -512,56 +512,235 @@ if ($useExistingIssue === '1') {
 
 
 /*
- * For a new Issue, use the temporary development
- * authority/region fixture.
+ * Determine the responsible authority for a NEW Issue.
  *
- * This will later be replaced by the actual
- * authority-routing mechanism.
- */
-$developmentRegionId = 'REG-TEST-001';
-$developmentAuthorityId = 'AUTH-TEST-001';
-
-
-/*
- * Verify the development routing fixture exists.
+ * Routing is based on:
+ * 1. Issue location being inside an active region.
+ * 2. Finding an authority covering that region.
+ * 3. Checking whether that authority handles the category.
+ * 4. If not, following the authority's parent hierarchy.
  */
 if ($issue === null) {
 
-    $routingQuery = "
+    /*
+     * First, find the active region containing
+     * the reported issue location.
+     */
+    $regionQuery = "
         SELECT
-            r.id AS region_db_id,
-            r.region_id,
-            a.id AS authority_db_id,
-            a.authority_id
-        FROM regions AS r
-        INNER JOIN authorities AS a
-            ON a.authority_id = :authority_id
-        WHERE r.region_id = :region_id
-          AND r.is_active = 1
-          AND a.is_active = 1
+            id AS region_db_id,
+            region_id
+        FROM regions
+        WHERE is_active = 1
+          AND boundary IS NOT NULL
+          AND ST_Contains(
+              boundary,
+              ST_SRID(
+                  ST_GeomFromText(
+                      CONCAT(
+                          'POINT(',
+                          :reported_longitude,
+                          ' ',
+                          :reported_latitude,
+                          ')'
+                      )
+                  ),
+                  4326
+              )
+          )
         LIMIT 1
     ";
 
-    $routingStatement = $pdo->prepare(
-        $routingQuery
+    $regionStatement = $pdo->prepare(
+        $regionQuery
     );
 
-    $routingStatement->execute([
-        ':region_id' =>
-            $developmentRegionId,
+    $regionStatement->execute([
+        ':reported_longitude' =>
+            $reportedLongitude,
 
-        ':authority_id' =>
-            $developmentAuthorityId
+        ':reported_latitude' =>
+            $reportedLatitude
     ]);
 
-    $routing = $routingStatement->fetch(
+    $region = $regionStatement->fetch(
         PDO::FETCH_ASSOC
     );
 
-    if ($routing === false) {
+    if ($region === false) {
         sendError(
-            'Development authority routing data is missing.',
-            500
+            'The reported issue location is not inside an active service region.'
+        );
+    }
+
+
+    /*
+     * Find an active authority covering this region.
+     *
+     * We use the authority with the category
+     * responsibility first, if one exists.
+     */
+    $authorityQuery = "
+        SELECT
+            a.id AS authority_db_id,
+            a.authority_id,
+            a.parent_authority_id
+        FROM authorities AS a
+        INNER JOIN authority_regions AS ar
+            ON ar.authority_id = a.id
+           AND ar.region_id = :region_db_id
+           AND ar.is_active = 1
+        WHERE a.is_active = 1
+        ORDER BY a.id
+        LIMIT 1
+    ";
+
+    $authorityStatement = $pdo->prepare(
+        $authorityQuery
+    );
+
+    $authorityStatement->execute([
+        ':region_db_id' =>
+            $region['region_db_id']
+    ]);
+
+    $authority = $authorityStatement->fetch(
+        PDO::FETCH_ASSOC
+    );
+
+    if ($authority === false) {
+        sendError(
+            'No active authority is assigned to this service region.'
+        );
+    }
+
+
+    /*
+     * Follow the authority hierarchy until we find
+     * an authority responsible for this category.
+     */
+    $currentAuthority = $authority;
+
+    while ($currentAuthority !== false) {
+
+        $categoryQuery = "
+            SELECT
+                a.id AS authority_db_id,
+                a.authority_id,
+                a.parent_authority_id
+            FROM authorities AS a
+            INNER JOIN authority_regions AS ar
+                ON ar.authority_id = a.id
+               AND ar.region_id = :region_db_id
+               AND ar.is_active = 1
+
+            INNER JOIN authority_categories AS ac
+                ON ac.authority_id = a.id
+               AND ac.category_id = :category_id
+               AND ac.is_active = 1
+
+            WHERE a.id = :authority_db_id
+              AND a.is_active = 1
+            LIMIT 1
+        ";
+
+        $categoryStatement = $pdo->prepare(
+            $categoryQuery
+        );
+
+        $categoryStatement->execute([
+            ':region_db_id' =>
+                $region['region_db_id'],
+
+            ':category_id' =>
+                $categoryRecord['id'],
+
+            ':authority_db_id' =>
+                $currentAuthority['authority_db_id']
+        ]);
+
+        $responsibleAuthority =
+            $categoryStatement->fetch(
+                PDO::FETCH_ASSOC
+            );
+
+        if ($responsibleAuthority !== false) {
+
+            $routing = [
+                'region_db_id' =>
+                    $region['region_db_id'],
+
+                'region_id' =>
+                    $region['region_id'],
+
+                'authority_db_id' =>
+                    $responsibleAuthority[
+                        'authority_db_id'
+                    ],
+
+                'authority_id' =>
+                    $responsibleAuthority[
+                        'authority_id'
+                    ]
+            ];
+
+            break;
+        }
+
+
+        /*
+         * The current authority does not handle
+         * this category. Move to its parent.
+         */
+        if (
+            empty(
+                $currentAuthority['parent_authority_id']
+            )
+        ) {
+            $currentAuthority = false;
+            break;
+        }
+
+
+        /*
+         * Load the parent authority.
+         */
+        $parentQuery = "
+            SELECT
+                id AS authority_db_id,
+                authority_id,
+                parent_authority_id
+            FROM authorities
+            WHERE id = :parent_authority_id
+              AND is_active = 1
+            LIMIT 1
+        ";
+
+        $parentStatement = $pdo->prepare(
+            $parentQuery
+        );
+
+        $parentStatement->execute([
+            ':parent_authority_id' =>
+                $currentAuthority[
+                    'parent_authority_id'
+                ]
+        ]);
+
+        $currentAuthority =
+            $parentStatement->fetch(
+                PDO::FETCH_ASSOC
+            );
+    }
+
+
+    /*
+     * No authority in the hierarchy handles
+     * the selected category.
+     */
+    if (!isset($routing)) {
+        sendError(
+            'No authority is currently responsible for this location and issue category.'
         );
     }
 }
