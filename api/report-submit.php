@@ -2,6 +2,8 @@
 
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../includes/auth.php';
+
 
 /*
  * Helper: send a JSON error response and stop execution.
@@ -138,10 +140,12 @@ $reportedLongitude = (float) $reportedLongitude;
 /*
  * Validate coordinate ranges.
  */
-foreach ([
-    [$reporterLatitude, $reporterLongitude],
-    [$reportedLatitude, $reportedLongitude]
-] as [$latitude, $longitude]) {
+foreach (
+    [
+        [$reporterLatitude, $reporterLongitude],
+        [$reportedLatitude, $reportedLongitude]
+    ] as [$latitude, $longitude]
+) {
 
     if (
         $latitude < -90 ||
@@ -367,42 +371,42 @@ if ($useExistingIssue === null) {
             'description' => $description,
 
             'reporter_latitude' =>
-                $reporterLatitude,
+            $reporterLatitude,
 
             'reporter_longitude' =>
-                $reporterLongitude,
+            $reporterLongitude,
 
             'reported_latitude' =>
-                $reportedLatitude,
+            $reportedLatitude,
 
             'reported_longitude' =>
-                $reportedLongitude,
+            $reportedLongitude,
 
             'location_verification_distance_m' =>
-                round(
-                    $verificationDistance,
-                    2
-                ),
+            round(
+                $verificationDistance,
+                2
+            ),
 
             'nearby_issue_found' =>
-                $nearbyIssue !== false,
+            $nearbyIssue !== false,
 
             'nearby_issue' =>
-                $nearbyIssue !== false
-                    ? [
-                        'issue_id' =>
-                            $nearbyIssue['issue_id'],
+            $nearbyIssue !== false
+                ? [
+                    'issue_id' =>
+                    $nearbyIssue['issue_id'],
 
-                        'latitude' =>
-                            (float) $nearbyIssue['latitude'],
+                    'latitude' =>
+                    (float) $nearbyIssue['latitude'],
 
-                        'longitude' =>
-                            (float) $nearbyIssue['longitude'],
+                    'longitude' =>
+                    (float) $nearbyIssue['longitude'],
 
-                        'status' =>
-                            $nearbyIssue['status']
-                    ]
-                    : null
+                    'status' =>
+                    $nearbyIssue['status']
+                ]
+                : null
         ]
     ]);
 
@@ -424,17 +428,21 @@ if (
 
 
 /*
- * Development citizen.
- *
- * Real phone/OTP authentication will replace this
- * when the authentication system is implemented.
+ * Get the currently authenticated citizen.
  */
-$developmentCitizenId = 'CIT-TEST-001';
+$loggedInCitizenId = getLoggedInCitizenId();
+
+if ($loggedInCitizenId === null) {
+    sendError(
+        'You must be logged in to submit a report.',
+        401
+    );
+}
 
 $citizenQuery = "
     SELECT id, citizen_id
     FROM citizens
-    WHERE citizen_id = :citizen_id
+    WHERE id = :id
       AND is_active = 1
     LIMIT 1
 ";
@@ -444,7 +452,7 @@ $citizenStatement = $pdo->prepare(
 );
 
 $citizenStatement->execute([
-    ':citizen_id' => $developmentCitizenId
+    ':id' => $loggedInCitizenId
 ]);
 
 $citizen = $citizenStatement->fetch(
@@ -453,8 +461,78 @@ $citizen = $citizenStatement->fetch(
 
 if ($citizen === false) {
     sendError(
-        'Development citizen account was not found.',
-        500
+        'Your citizen account could not be found.',
+        401
+    );
+}
+
+
+/*
+ * Prevent the same citizen from creating another active
+ * report for the same category at essentially the same
+ * location.
+ *
+ * This is deliberately based on ACTIVE Issues only. Once
+ * an Issue is Resolved or Closed, the citizen may report a
+ * genuinely new occurrence at the same location.
+ */
+$citizenDuplicateQuery = "
+    SELECT
+        r.report_id,
+        i.issue_id,
+        i.status
+    FROM reports AS r
+    INNER JOIN issues AS i
+        ON i.id = r.issue_id
+    WHERE r.citizen_id = :citizen_id
+      AND r.category_id = :category_id
+      AND i.status IN ('Open', 'In Progress')
+      AND (
+          6371000 * 2 * ASIN(
+              SQRT(
+                  POWER(
+                      SIN(
+                          RADIANS(r.reported_latitude - :reported_latitude) / 2
+                      ),
+                      2
+                  ) +
+                  COS(RADIANS(:reported_latitude_2)) *
+                  COS(RADIANS(r.reported_latitude)) *
+                  POWER(
+                      SIN(
+                          RADIANS(
+                              r.reported_longitude - :reported_longitude
+                          ) / 2
+                      ),
+                      2
+                  )
+              )
+          ) <= :duplicate_distance
+      )
+    ORDER BY r.reported_at DESC
+    LIMIT 1
+";
+
+$citizenDuplicateStatement = $pdo->prepare(
+    $citizenDuplicateQuery
+);
+
+$citizenDuplicateStatement->execute([
+    ':citizen_id' => $citizen['id'],
+    ':category_id' => $categoryRecord['id'],
+    ':reported_latitude' => $reportedLatitude,
+    ':reported_latitude_2' => $reportedLatitude,
+    ':reported_longitude' => $reportedLongitude,
+    ':duplicate_distance' => $nearbyIssueDistance
+]);
+
+$citizenDuplicate = $citizenDuplicateStatement->fetch(
+    PDO::FETCH_ASSOC
+);
+
+if ($citizenDuplicate !== false) {
+    sendError(
+        'You have already reported this issue. You can track it from My Reports.'
     );
 }
 
@@ -484,19 +562,19 @@ if ($useExistingIssue === '1') {
 
     $recheckStatement->execute([
         ':category_id' =>
-            $categoryRecord['id'],
+        $categoryRecord['id'],
 
         ':reported_latitude' =>
-            $reportedLatitude,
+        $reportedLatitude,
 
         ':reported_latitude_2' =>
-            $reportedLatitude,
+        $reportedLatitude,
 
         ':reported_longitude' =>
-            $reportedLongitude,
+        $reportedLongitude,
 
         ':nearby_distance' =>
-            $nearbyIssueDistance
+        $nearbyIssueDistance
     ]);
 
     $issue = $recheckStatement->fetch(
@@ -521,6 +599,36 @@ if ($useExistingIssue === '1') {
  * 4. If not, following the authority's parent hierarchy.
  */
 if ($issue === null) {
+
+    /*
+     * If the first validation request found no nearby Issue,
+     * check once more before creating a NEW Issue. This closes
+     * the small gap where another submission could create an
+     * Issue between the two requests.
+     */
+    if ($nearbyIssue === false) {
+        $finalNearbyStatement = $pdo->prepare(
+            $nearbyIssueQuery
+        );
+
+        $finalNearbyStatement->execute([
+            ':category_id' => $categoryRecord['id'],
+            ':reported_latitude' => $reportedLatitude,
+            ':reported_latitude_2' => $reportedLatitude,
+            ':reported_longitude' => $reportedLongitude,
+            ':nearby_distance' => $nearbyIssueDistance
+        ]);
+
+        $finalNearbyIssue = $finalNearbyStatement->fetch(
+            PDO::FETCH_ASSOC
+        );
+
+        if ($finalNearbyIssue !== false) {
+            sendError(
+                'A similar issue was reported nearby while your report was being submitted. Please submit again and choose whether it is the same issue.'
+            );
+        }
+    }
 
     /*
      * First, find the active region containing
@@ -557,10 +665,10 @@ if ($issue === null) {
 
     $regionStatement->execute([
         ':reported_longitude' =>
-            $reportedLongitude,
+        $reportedLongitude,
 
         ':reported_latitude' =>
-            $reportedLatitude
+        $reportedLatitude
     ]);
 
     $region = $regionStatement->fetch(
@@ -601,7 +709,7 @@ if ($issue === null) {
 
     $authorityStatement->execute([
         ':region_db_id' =>
-            $region['region_db_id']
+        $region['region_db_id']
     ]);
 
     $authority = $authorityStatement->fetch(
@@ -650,13 +758,13 @@ if ($issue === null) {
 
         $categoryStatement->execute([
             ':region_db_id' =>
-                $region['region_db_id'],
+            $region['region_db_id'],
 
             ':category_id' =>
-                $categoryRecord['id'],
+            $categoryRecord['id'],
 
             ':authority_db_id' =>
-                $currentAuthority['authority_db_id']
+            $currentAuthority['authority_db_id']
         ]);
 
         $responsibleAuthority =
@@ -668,20 +776,16 @@ if ($issue === null) {
 
             $routing = [
                 'region_db_id' =>
-                    $region['region_db_id'],
+                $region['region_db_id'],
 
                 'region_id' =>
-                    $region['region_id'],
+                $region['region_id'],
 
                 'authority_db_id' =>
-                    $responsibleAuthority[
-                        'authority_db_id'
-                    ],
+                $responsibleAuthority['authority_db_id'],
 
                 'authority_id' =>
-                    $responsibleAuthority[
-                        'authority_id'
-                    ]
+                $responsibleAuthority['authority_id']
             ];
 
             break;
@@ -693,9 +797,7 @@ if ($issue === null) {
          * this category. Move to its parent.
          */
         if (
-            empty(
-                $currentAuthority['parent_authority_id']
-            )
+            empty($currentAuthority['parent_authority_id'])
         ) {
             $currentAuthority = false;
             break;
@@ -722,9 +824,7 @@ if ($issue === null) {
 
         $parentStatement->execute([
             ':parent_authority_id' =>
-                $currentAuthority[
-                    'parent_authority_id'
-                ]
+            $currentAuthority['parent_authority_id']
         ]);
 
         $currentAuthority =
@@ -745,7 +845,6 @@ if ($issue === null) {
     }
 }
 
-
 /*
  * Begin database transaction.
  */
@@ -764,15 +863,13 @@ try {
 
         $issueDatabaseId = $issue['id'];
         $issuePublicId = $issue['issue_id'];
-
     }
 
     /*
      * -------------------------------------------------
      * New Issue
      * -------------------------------------------------
-     */
-    else {
+     */ else {
 
         $issueDatabaseId = null;
         $issuePublicId = generateId('ISS');
@@ -804,22 +901,22 @@ try {
 
         $createIssueStatement->execute([
             ':issue_id' =>
-                $issuePublicId,
+            $issuePublicId,
 
             ':category_id' =>
-                $categoryRecord['id'],
+            $categoryRecord['id'],
 
             ':region_id' =>
-                $routing['region_db_id'],
+            $routing['region_db_id'],
 
             ':authority_id' =>
-                $routing['authority_db_id'],
+            $routing['authority_db_id'],
 
             ':latitude' =>
-                $reportedLatitude,
+            $reportedLatitude,
 
             ':longitude' =>
-                $reportedLongitude
+            $reportedLongitude
         ]);
 
         $issueDatabaseId = (int) $pdo->lastInsertId();
@@ -868,37 +965,37 @@ try {
 
     $createReportStatement->execute([
         ':report_id' =>
-            $reportPublicId,
+        $reportPublicId,
 
         ':issue_id' =>
-            $issueDatabaseId,
+        $issueDatabaseId,
 
         ':citizen_id' =>
-            $citizen['id'],
+        $citizen['id'],
 
         ':category_id' =>
-            $categoryRecord['id'],
+        $categoryRecord['id'],
 
         ':description' =>
-            $description,
+        $description,
 
         ':reported_latitude' =>
-            $reportedLatitude,
+        $reportedLatitude,
 
         ':reported_longitude' =>
-            $reportedLongitude,
+        $reportedLongitude,
 
         ':reporter_latitude' =>
-            $reporterLatitude,
+        $reporterLatitude,
 
         ':reporter_longitude' =>
-            $reporterLongitude,
+        $reporterLongitude,
 
         ':verification_distance' =>
-            round(
-                $verificationDistance,
-                2
-            )
+        round(
+            $verificationDistance,
+            2
+        )
     ]);
 
     $reportDatabaseId = (int) $pdo->lastInsertId();
@@ -1001,22 +1098,22 @@ try {
 
     $createPhotoStatement->execute([
         ':report_photo_id' =>
-            $photoPublicId,
+        $photoPublicId,
 
         ':report_id' =>
-            $reportDatabaseId,
+        $reportDatabaseId,
 
         ':file_path' =>
-            $relativePhotoPath,
+        $relativePhotoPath,
 
         ':original_filename' =>
-            $photo['name'],
+        $photo['name'],
 
         ':mime_type' =>
-            $imageInfo['mime'],
+        $imageInfo['mime'],
 
         ':file_size' =>
-            $photo['size']
+        $photo['size']
     ]);
 
 
@@ -1056,13 +1153,13 @@ try {
 
         $createHistoryStatement->execute([
             ':history_id' =>
-                $statusHistoryPublicId,
+            $statusHistoryPublicId,
 
             ':issue_id' =>
-                $issueDatabaseId,
+            $issueDatabaseId,
 
             ':remark' =>
-                'Issue registered through citizen report.'
+            'Issue registered through citizen report.'
         ]);
     }
 
@@ -1085,7 +1182,7 @@ try {
 
         $updateIssueStatement->execute([
             ':issue_id' =>
-                $issueDatabaseId
+            $issueDatabaseId
         ]);
     }
 
@@ -1100,31 +1197,30 @@ try {
         'success' => true,
 
         'message' =>
-            $issue !== null
-                ? 'Your report has been added to the existing issue.'
-                : 'Your issue has been reported successfully.',
+        $issue !== null
+            ? 'Your report has been added to the existing issue.'
+            : 'Your issue has been reported successfully.',
 
         'report' => [
             'report_id' =>
-                $reportPublicId,
+            $reportPublicId,
 
             'issue_id' =>
-                $issuePublicId,
+            $issuePublicId,
 
             'linked_to_existing_issue' =>
-                $issue !== null,
+            $issue !== null,
 
             'category' =>
-                $category,
+            $category,
 
             'location_verification_distance_m' =>
-                round(
-                    $verificationDistance,
-                    2
-                )
+            round(
+                $verificationDistance,
+                2
+            )
         ]
     ]);
-
 } catch (Throwable $exception) {
 
     /*
@@ -1153,7 +1249,7 @@ try {
      */
     error_log(
         'InfraFix report creation failed: ' .
-        $exception->getMessage()
+            $exception->getMessage()
     );
 
 

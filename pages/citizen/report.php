@@ -1,3 +1,10 @@
+<?php
+
+require_once '../../includes/auth.php';
+
+requireCitizenAuth();
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -11,8 +18,7 @@
 
     <link
         rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 
 <body>
@@ -49,8 +55,7 @@
                 class="report-form"
                 action="../../api/report-submit.php"
                 method="POST"
-                enctype="multipart/form-data"
-            >
+                enctype="multipart/form-data">
 
                 <div class="form-section">
 
@@ -112,8 +117,7 @@
                             name="description"
                             rows="5"
                             maxlength="500"
-                            placeholder="Add any additional information that may help the authority understand the issue."
-                        ></textarea>
+                            placeholder="Add any additional information that may help the authority understand the issue."></textarea>
 
                         <p class="form-hint">
                             Maximum 500 characters.
@@ -136,8 +140,7 @@
                     <button
                         type="button"
                         class="btn btn-secondary"
-                        id="get-location"
-                    >
+                        id="get-location">
                         Use my current location
                     </button>
 
@@ -148,8 +151,7 @@
                     <div
                         id="report-map"
                         class="report-map"
-                        aria-label="Map for selecting the issue location"
-                    ></div>
+                        aria-label="Map for selecting the issue location"></div>
 
                     <p class="form-hint">
                         Drag the marker to the exact location of the issue.
@@ -159,27 +161,23 @@
                     <input
                         type="hidden"
                         id="reporter-latitude"
-                        name="reporter_latitude"
-                    >
+                        name="reporter_latitude">
 
                     <input
                         type="hidden"
                         id="reporter-longitude"
-                        name="reporter_longitude"
-                    >
+                        name="reporter_longitude">
 
                     <!-- Location selected by the reporter -->
                     <input
                         type="hidden"
                         id="reported-latitude"
-                        name="reported_latitude"
-                    >
+                        name="reported_latitude">
 
                     <input
                         type="hidden"
                         id="reported-longitude"
-                        name="reported_longitude"
-                    >
+                        name="reported_longitude">
 
                 </div>
 
@@ -204,8 +202,7 @@
                             name="issue_photo"
                             accept="image/*"
                             capture="environment"
-                            required
-                        >
+                            required>
 
                         <p class="form-hint">
                             Maximum file size: 5 MB.
@@ -224,8 +221,7 @@
 
                     <button
                         type="submit"
-                        class="btn btn-primary"
-                    >
+                        class="btn btn-primary">
                         Submit Report
                     </button>
 
@@ -241,8 +237,7 @@
     <?php include '../../includes/mobile-nav.php'; ?>
 
     <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    ></script>
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="../../assets/js/app.js"></script>
 
 </body>

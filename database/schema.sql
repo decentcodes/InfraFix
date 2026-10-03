@@ -5,6 +5,7 @@ CREATE TABLE citizens (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     citizen_id VARCHAR(20) NOT NULL UNIQUE,
     phone VARCHAR(15) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 ) ENGINE=InnoDB;
@@ -109,6 +110,7 @@ CREATE TABLE issues (
     authority_id INT UNSIGNED NOT NULL,
     latitude DECIMAL(10, 7) NOT NULL,
     longitude DECIMAL(10, 7) NOT NULL,
+    address VARCHAR(500) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'Open',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -420,4 +422,15 @@ CREATE TABLE issue_priority_score_factors (
 
     CONSTRAINT uq_issue_priority_score_factor
         UNIQUE (issue_priority_score_id, factor_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE citizen_otp_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    otp_request_id VARCHAR(32) NOT NULL UNIQUE,
+    phone VARCHAR(20) NOT NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    verified_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

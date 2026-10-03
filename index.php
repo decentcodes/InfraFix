@@ -34,7 +34,7 @@
             <div class="hero-content">
 
                 <p class="eyebrow">
-                    Smarter civic infrastructure
+                    Smarter public infrastructure
                 </p>
 
                 <h1>
@@ -119,6 +119,50 @@
                     </p>
 
                 </article>
+
+            </div>
+
+        </section>
+
+        </section>
+
+
+        <section id="about" class="about-section">
+
+            <div class="section-heading">
+                <p class="eyebrow">
+                    About InfraFix
+                </p>
+
+                <h2>
+                    Making infrastructure reporting more effective.
+                </h2>
+            </div>
+
+            <div class="about-content">
+
+                <p>
+                    InfraFix is a location-based public infrastructure
+                    reporting and complaint prioritization system that
+                    connects citizens with the authorities responsible
+                    for their area.
+                </p>
+
+                <p>
+                    Citizens can report issues such as potholes, damaged
+                    roads, garbage, drainage problems, broken streetlights
+                    and other infrastructure concerns using location and
+                    photo evidence.
+                </p>
+
+                <p>
+                    Instead of treating every complaint equally, InfraFix
+                    evaluates reported issues using factors such as safety,
+                    severity, location criticality, weather and context,
+                    report volume and how long an issue has remained
+                    unresolved. This helps authorities identify which
+                    issues may require attention first.
+                </p>
 
             </div>
 
