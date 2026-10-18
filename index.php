@@ -18,11 +18,26 @@
             InfraFix
         </a>
 
+
+
         <nav class="main-nav">
             <a href="#how-it-works">How it works</a>
             <a href="#about">About</a>
-            <a href="pages/auth/login.php">Login</a>
+            <a href="pages/auth/login.php">Citizen Login</a>
+            <a href="pages/authority/login.php">Authority Portal</a>
+            <button
+                type="button"
+                class="landing-theme-toggle"
+                id="landing-theme-toggle"
+                aria-label="Switch to dark mode"
+                aria-pressed="false">
+                <span class="theme-icon sun-icon">☀</span>
+                <span class="theme-icon moon-icon">☾</span>
+            </button>
+
         </nav>
+
+
 
     </header>
 
@@ -124,9 +139,6 @@
 
         </section>
 
-        </section>
-
-
         <section id="about" class="about-section">
 
             <div class="section-heading">
@@ -181,6 +193,39 @@
 
 
     <script src="assets/js/app.js"></script>
+
+    <script>
+        const landingThemeToggle = document.getElementById('landing-theme-toggle');
+
+        function updateLandingThemeButton() {
+            const isDark =
+                document.documentElement.getAttribute('data-theme') === 'dark';
+
+            landingThemeToggle.setAttribute('aria-pressed', String(isDark));
+            landingThemeToggle.setAttribute(
+                'aria-label',
+                isDark ? 'Switch to light mode' : 'Switch to dark mode'
+            );
+        }
+
+        updateLandingThemeButton();
+
+        landingThemeToggle.addEventListener('click', function() {
+            const isDark =
+                document.documentElement.getAttribute('data-theme') === 'dark';
+
+            if (isDark) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('infrafix-theme', 'light');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('infrafix-theme', 'dark');
+            }
+
+            updateLandingThemeButton();
+        });
+    </script>
+</body>
 
 </body>
 

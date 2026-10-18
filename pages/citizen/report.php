@@ -1,6 +1,6 @@
 <?php
 
-require_once '../../includes/auth.php';
+require_once __DIR__ . '/../../includes/auth.php';
 
 requireCitizenAuth();
 ?>
@@ -23,12 +23,12 @@ requireCitizenAuth();
 
 <body>
 
-    <?php include '../../includes/header.php'; ?>
+    <?php include __DIR__ . '/../../includes/header.php'; ?>
 
 
     <main class="app-layout">
 
-        <?php include '../../includes/sidebar.php'; ?>
+        <?php include __DIR__ . '/../../includes/sidebar.php'; ?>
 
 
         <section class="app-content">
@@ -56,6 +56,8 @@ requireCitizenAuth();
                 action="../../api/report-submit.php"
                 method="POST"
                 enctype="multipart/form-data">
+
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
 
                 <div class="form-section">
 
@@ -234,7 +236,7 @@ requireCitizenAuth();
     </main>
 
 
-    <?php include '../../includes/mobile-nav.php'; ?>
+    <?php include __DIR__ . '/../../includes/mobile-nav.php'; ?>
 
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

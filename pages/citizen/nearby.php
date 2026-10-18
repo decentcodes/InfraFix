@@ -24,11 +24,11 @@ requireCitizenAuth();
 
 <body>
 
-    <?php include '../../includes/header.php'; ?>
+    <?php include __DIR__ . '/../../includes/header.php'; ?>
 
     <div class="app-layout">
 
-        <?php include '../../includes/sidebar.php'; ?>
+        <?php include __DIR__ . '/../../includes/sidebar.php'; ?>
 
         <main class="app-content">
 
@@ -37,11 +37,42 @@ requireCitizenAuth();
                 <p>View public infrastructure issues reported within 500 m of your location.</p>
             </div>
 
+
             <section class="nearby-map-card">
+
+                <div class="nearby-map-legend">
+                    <strong>Priority</strong>
+
+                    <span>
+                        <i class="priority-dot priority-low"></i>
+                        Low
+                    </span>
+
+                    <span>
+                        <i class="priority-dot priority-moderate"></i>
+                        Moderate
+                    </span>
+
+                    <span>
+                        <i class="priority-dot priority-high"></i>
+                        High
+                    </span>
+
+                    <span>
+                        <i class="priority-dot priority-critical"></i>
+                        Critical
+                    </span>
+
+                    <span>
+                        <i class="priority-dot priority-unscored"></i>
+                        Unscored
+                    </span>
+                </div>
 
                 <div id="nearby-map"></div>
 
             </section>
+
 
             <section class="nearby-issues-section">
 
@@ -72,7 +103,7 @@ requireCitizenAuth();
 
     </div>
 
-    <?php include '../../includes/mobile-nav.php'; ?>
+    <?php include __DIR__ . '/../../includes/mobile-nav.php'; ?>
 
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -80,6 +111,19 @@ requireCitizenAuth();
 
     <script>
         const map = L.map('nearby-map');
+
+        const priorityColors = {
+            Low: '#26965c',
+            Moderate: '#e5b52e',
+            High: '#ed8528',
+            Critical: '#d83b43',
+            Unscored: '#64748b'
+        };
+
+        function getPriorityColor(band) {
+            return priorityColors[band] || priorityColors.Unscored;
+        }
+
 
         let issueMarkers = [];
 
@@ -182,60 +226,357 @@ requireCitizenAuth();
                             parseFloat(issue.longitude);
 
 
+
                         // Map marker
-                        const marker = L.marker([
-                            latitude,
-                            longitude
-                        ]);
+                        const priorityBand = issue.priority_band || 'Unscored';
+                        const priorityScore = issue.priority_score;
+                        const markerColor = getPriorityColor(priorityBand);
+
+                        const marker = L.circleMarker(
+                            [latitude, longitude], {
+                                radius: 9,
+                                color: markerColor,
+                                fillColor: markerColor,
+                                fillOpacity: 0.85,
+                                weight: 2
+                            }
+                        );
+
+                        const scoreText = priorityScore !== null &&
+                            priorityScore !== undefined ?
+                            Number(priorityScore).toFixed(1) :
+                            'Not available';
 
                         marker.bindPopup(`
-            <strong>${issue.category}</strong><br>
-            Status: ${issue.status}<br>
-            Issue ID: ${issue.issue_id}
-        `);
+    <strong>${issue.category}</strong><br>
+    Status: ${issue.status}<br>
+    Issue ID: ${issue.issue_id}<br>
+    Priority: ${priorityBand}
+`);
 
                         marker.addTo(map);
-
                         issueMarkers.push(marker);
 
 
                         // Issue list item
-                        const issueCard =
-                            document.createElement('div');
+                        const issueCard = document.createElement('article');
+                        issueCard.className = 'nearby-issue-card';
 
-                        issueCard.className =
-                            'nearby-issue-card';
 
                         issueCard.innerHTML = `
-            <div>
-                <h3>${issue.category}</h3>
-                <p>Status: ${issue.status}</p>
-                <p>Issue ID: ${issue.issue_id}</p>
-            </div>
-        `;
+    <div class="nearby-issue-card-content">
+        <h3></h3>
+        <p class="issue-status"></p>
+        <p class="issue-id"></p>
 
-                        issueCard.addEventListener(
-                            'click',
-                            function() {
+        <p class="nearby-priority">
+            <span
+                class="priority-dot"
+                style="background-color: ${markerColor}"
+            ></span>
+            <strong></strong>
+        </p>
 
-                                map.setView(
-                                    [latitude, longitude],
-                                    18
+        <button
+            type="button"
+            class="btn btn-secondary view-issue-details">
+            View issue details
+        </button>
+    </div>
+
+    <div class="nearby-issue-details" hidden>
+        <div class="nearby-issue-details-header">
+            <h3 class="detail-category">Issue Details</h3>
+            <button
+                type="button"
+                class="btn btn-secondary close-issue-details">
+                Close
+            </button>
+        </div>
+
+        <div class="nearby-issue-details-content"></div>
+    </div>
+`;
+
+
+                        // Populate text safely.
+                        issueCard.querySelector('h3').textContent =
+                            issue.category;
+
+                        issueCard.querySelector('.issue-status').textContent =
+                            `Status: ${issue.status}`;
+
+                        issueCard.querySelector('.issue-id').textContent =
+                            `Issue ID: ${issue.issue_id}`;
+
+                        issueCard.querySelector('.nearby-priority strong')
+                            .textContent = `${priorityBand} Priority`;
+
+                        /*
+                         * Clicking the card focuses the map only.
+                         */
+                        function focusIssueOnMap() {
+                            map.setView([latitude, longitude], 18);
+                            marker.openPopup();
+                        }
+
+                        issueCard.addEventListener('click', function(event) {
+                            if (event.target.closest('.view-issue-details')) {
+                                return;
+                            }
+
+                            focusIssueOnMap();
+                        });
+
+                        /*
+                         * Fetch and display full details only when
+                         * the citizen clicks the details button.
+                         */
+                        const detailsButton =
+                            issueCard.querySelector('.view-issue-details');
+
+                        detailsButton.addEventListener('click', async function(event) {
+                            // Collapse any other expanded issue details.
+                            document.querySelectorAll('.nearby-issue-details').forEach(function(panel) {
+                                panel.hidden = true;
+                            });
+                            event.stopPropagation();
+
+                            const detailsPanel =
+                                issueCard.querySelector('.nearby-issue-details');
+
+                            const detailsContent =
+                                issueCard.querySelector('.nearby-issue-details-content');
+
+                            const detailsHeading =
+                                issueCard.querySelector('.detail-category');
+
+                            detailsButton.disabled = true;
+                            detailsButton.textContent = 'Loading details...';
+
+                            try {
+                                const response = await fetch(
+                                    `../../api/issue-details.php?issue_id=${
+                                        encodeURIComponent(issue.issue_id)
+                                    }`
                                 );
 
-                                marker.openPopup();
-                            }
-                        );
+                                const result = await response.json();
 
-                        nearbyIssuesList.appendChild(
-                            issueCard
-                        );
+                                if (!response.ok || !result.success) {
+                                    throw new Error(
+                                        result.message || 'Could not load issue details.'
+                                    );
+                                }
+
+                                const details = result.issue;
+
+                                detailsHeading.textContent =
+                                    `${details.category_name} — Issue Details`;
+
+                                detailsContent.replaceChildren();
+
+                                function addDetail(label, value) {
+                                    const row = document.createElement('p');
+                                    const strong = document.createElement('strong');
+
+                                    strong.textContent = `${label}: `;
+
+                                    row.appendChild(strong);
+                                    row.appendChild(
+                                        document.createTextNode(
+                                            value ?? 'Not available'
+                                        )
+                                    );
+
+                                    detailsContent.appendChild(row);
+                                }
+
+                                function formatDateTime(value) {
+                                    if (!value) {
+                                        return 'Not available';
+                                    }
+
+                                    // Interpret MySQL's timestamp as a
+                                    // local date/time without changing its
+                                    // displayed clock time through UTC parsing.
+                                    const date = new Date(
+                                        value.replace(' ', 'T')
+                                    );
+
+                                    if (Number.isNaN(date.getTime())) {
+                                        return value;
+                                    }
+
+                                    return date.toLocaleString();
+                                }
+
+                                function calculateDuration(value) {
+                                    if (!value) {
+                                        return 'Not available';
+                                    }
+
+                                    const start = new Date(
+                                        value.replace(' ', 'T')
+                                    );
+
+                                    if (Number.isNaN(start.getTime())) {
+                                        return 'Not available';
+                                    }
+
+                                    const elapsed = Math.max(
+                                        0,
+                                        Date.now() - start.getTime()
+                                    );
+
+                                    const totalHours = Math.floor(
+                                        elapsed / (1000 * 60 * 60)
+                                    );
+
+                                    const days = Math.floor(totalHours / 24);
+                                    const hours = totalHours % 24;
+
+                                    if (days === 0) {
+                                        return `${hours} hour(s)`;
+                                    }
+
+                                    return `${days} day(s), ${hours} hour(s)`;
+                                }
+
+                                addDetail('Issue ID', details.issue_id);
+                                addDetail('Category', details.category_name);
+                                addDetail('Status', details.status);
+                                addDetail(
+                                    'Responsible authority',
+                                    details.authority_name
+                                );
+                                addDetail(
+                                    'Priority',
+                                    details.priority_band === 'Unscored' ?
+                                    'Not yet scored' :
+                                    `${details.priority_band} Priority`
+                                );
+                                addDetail(
+                                    'Duration',
+                                    calculateDuration(details.first_reported_at)
+                                );
+                                addDetail(
+                                    'First reported',
+                                    formatDateTime(details.first_reported_at)
+                                );
+                                addDetail(
+                                    'Last reported',
+                                    formatDateTime(details.last_reported_at)
+                                );
+                                addDetail('Number of reports', details.report_count);
+                                addDetail(
+                                    'Location address',
+                                    details.address || 'Address not available'
+                                );
+
+                                // First report description.
+                                const descriptionHeading =
+                                    document.createElement('h3');
+
+                                descriptionHeading.textContent =
+                                    'First report description';
+
+                                detailsContent.appendChild(descriptionHeading);
+
+                                const description =
+                                    document.createElement('p');
+
+                                description.textContent =
+                                    details.first_description ||
+                                    'No description available.';
+
+                                detailsContent.appendChild(description);
+
+                                // First evidence photo, if available.
+                                const photoHeading =
+                                    document.createElement('h3');
+
+                                photoHeading.textContent =
+                                    'First evidence photo';
+
+                                detailsContent.appendChild(photoHeading);
+
+                                if (
+                                    details.first_evidence_photo &&
+                                    !details.first_evidence_photo.startsWith('/') &&
+                                    !details.first_evidence_photo.includes('..')
+                                ) {
+                                    const photo =
+                                        document.createElement('img');
+
+                                    photo.src =
+                                        `../../${details.first_evidence_photo}`;
+
+                                    photo.alt =
+                                        `Evidence for issue ${details.issue_id}`;
+
+                                    photo.loading = 'lazy';
+                                    photo.className = 'nearby-evidence-photo';
+
+                                    photo.onerror = function() {
+                                        photo.remove();
+
+                                        const message =
+                                            document.createElement('p');
+
+                                        message.textContent =
+                                            'The evidence photo could not be loaded.';
+
+                                        detailsContent.appendChild(message);
+                                    };
+
+                                    detailsContent.appendChild(photo);
+                                } else {
+                                    const noPhoto =
+                                        document.createElement('p');
+
+                                    noPhoto.textContent =
+                                        'No evidence photo available.';
+
+                                    detailsContent.appendChild(noPhoto);
+                                }
+
+                                detailsPanel.hidden = false;
+
+                                focusIssueOnMap();
+
+                            } catch (error) {
+                                console.error(
+                                    'Could not load issue details:',
+                                    error
+                                );
+
+                                alert(
+                                    error.message ||
+                                    'Could not load issue details. Please try again.'
+                                );
+                            } finally {
+                                detailsButton.disabled = false;
+                                detailsButton.textContent = 'View issue details';
+                            }
+                        });
+
+                        issueCard
+                            .querySelector('.close-issue-details')
+                            .addEventListener('click', function(event) {
+                                event.stopPropagation();
+
+                                issueCard.querySelector(
+                                    '.nearby-issue-details'
+                                ).hidden = true;
+                            });
+
+                        nearbyIssuesList.appendChild(issueCard);
+
+
                     });
                 }
 
-                console.log(
-                    `Loaded ${result.count} nearby issue(s).`
-                );
 
             } catch (error) {
 

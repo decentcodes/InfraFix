@@ -22,11 +22,11 @@ $citizenId = getLoggedInCitizenId();
 
 <body>
 
-    <?php include '../../includes/header.php'; ?>
+    <?php include __DIR__ . '/../../includes/header.php'; ?>
 
     <div class="app-layout">
 
-        <?php include '../../includes/sidebar.php'; ?>
+        <?php include __DIR__ . '/../../includes/sidebar.php'; ?>
 
         <main class="app-content">
 
@@ -72,9 +72,10 @@ $citizenId = getLoggedInCitizenId();
                 <div class="profile-section">
                     <h2>Account</h2>
 
-                    <a href="../../api/auth/logout.php" class="profile-logout-button">
-                        Log out
-                    </a>
+                    <form action="../../api/auth/logout.php" method="post">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit" class="profile-logout-button">Log out</button>
+                    </form>
                 </div>
 
             </section>
@@ -83,7 +84,7 @@ $citizenId = getLoggedInCitizenId();
 
     </div>
 
-    <?php include '../../includes/mobile-nav.php'; ?>
+    <?php include __DIR__ . '/../../includes/mobile-nav.php'; ?>
 
     <script>
         const themeToggle = document.getElementById('theme-toggle');

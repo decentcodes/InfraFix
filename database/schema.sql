@@ -1,5 +1,6 @@
-CREATE DATABASE INFRAFIX;
-USE INFRAFIX;
+-- InfraFix schema (MySQL 8 and MariaDB 10.4+/11.x compatible).
+-- Import this into an EXISTING empty database (select it first in phpMyAdmin).
+-- Do not add CREATE DATABASE / USE here: shared hosts do not allow it.
 
 CREATE TABLE citizens (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -26,7 +27,7 @@ CREATE TABLE regions (
     name VARCHAR(100) NOT NULL,
     region_type VARCHAR(50) NOT NULL,
     parent_region_id INT UNSIGNED NULL,
-    boundary POLYGON SRID 4326 NULL,
+    boundary_geojson LONGTEXT NULL COMMENT 'GeoJSON Polygon/MultiPolygon, WGS84, [lng, lat]',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -43,6 +44,7 @@ CREATE TABLE authorities (
     public_name VARCHAR(150) NOT NULL,
     phone VARCHAR(15) NOT NULL,
     email VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NULL,
     parent_authority_id INT UNSIGNED NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -100,6 +102,74 @@ CREATE TABLE authority_categories (
 
     CONSTRAINT uq_authority_category
         UNIQUE (authority_id, category_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE authority_access_requests (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+    request_id VARCHAR(32) NOT NULL UNIQUE,
+
+    public_name VARCHAR(150) NOT NULL,
+    phone VARCHAR(15) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+
+    requested_region_id INT UNSIGNED NULL,
+    requested_parent_authority_id INT UNSIGNED NULL,
+
+    status ENUM('Pending', 'Approved', 'Rejected')
+        NOT NULL DEFAULT 'Pending',
+
+    phone_verified_at DATETIME NULL,
+    email_verified_at DATETIME NULL,
+
+    password_hash VARCHAR(255) NULL,
+
+    rejection_reason VARCHAR(500) NULL,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_request_region
+        FOREIGN KEY (requested_region_id)
+        REFERENCES regions(id),
+
+    CONSTRAINT fk_request_parent_authority
+        FOREIGN KEY (requested_parent_authority_id)
+        REFERENCES authorities(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE authority_access_request_categories (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+    request_id INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+
+    CONSTRAINT fk_request_category_request
+        FOREIGN KEY (request_id)
+        REFERENCES authority_access_requests(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_request_category
+        FOREIGN KEY (category_id)
+        REFERENCES categories(id),
+
+    UNIQUE (request_id, category_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE admins (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+
+    admin_id VARCHAR(32) NOT NULL UNIQUE,
+
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 CREATE TABLE issues (
@@ -285,6 +355,9 @@ CREATE TABLE resolution_feedback (
         ON UPDATE CASCADE
         ON DELETE RESTRICT,
 
+    CONSTRAINT uq_resolution_feedback_once
+        UNIQUE (resolution_id, citizen_id),
+
     CONSTRAINT chk_resolution_feedback_rating
         CHECK (rating BETWEEN 1 AND 5)
 ) ENGINE=InnoDB;
@@ -433,4 +506,27 @@ CREATE TABLE citizen_otp_requests (
     attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     verified_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE points_of_interest (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    poi_id VARCHAR(32) NOT NULL UNIQUE,
+    poi_type_id INT UNSIGNED NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    latitude DECIMAL(10, 8) NOT NULL,
+    longitude DECIMAL(11, 8) NOT NULL,
+    address VARCHAR(500) NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_poi_type
+        FOREIGN KEY (poi_type_id)
+        REFERENCES poi_types(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE app_settings (
+    setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

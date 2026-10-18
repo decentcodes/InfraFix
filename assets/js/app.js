@@ -1,4 +1,3 @@
-console.log("InfraFix loaded.");
 
 const reporterLatitudeInput =
     document.querySelector("#reporter-latitude");
@@ -233,9 +232,6 @@ async function loadNearbyIssues(
             }
         );
 
-        console.log(
-            `Loaded ${result.count} nearby issue(s).`
-        );
 
     } catch (error) {
 
@@ -292,15 +288,7 @@ if (locationButton && locationStatus) {
                         longitude
                     );
 
-                    console.log(
-                        "Reporter latitude:",
-                        latitude
-                    );
 
-                    console.log(
-                        "Reporter longitude:",
-                        longitude
-                    );
                 },
 
                 (error) => {
@@ -465,10 +453,6 @@ if (reportForm) {
                 const result =
                     await response.json();
 
-                console.log(
-                    "Server response:",
-                    result
-                );
 
 
                 // --------------------------------------
@@ -527,10 +511,6 @@ if (reportForm) {
                     const finalResult =
                         await finalResponse.json();
 
-                    console.log(
-                        "Final submission response:",
-                        finalResult
-                    );
 
 
                     if (!finalResult.success) {
@@ -576,9 +556,6 @@ if (reportForm) {
                 );
 
 
-                console.log(
-                    "No nearby existing issue found. Creating a new issue."
-                );
 
 
                 // --------------------------------------
@@ -597,10 +574,6 @@ if (reportForm) {
                 const finalResult =
                     await finalResponse.json();
 
-                console.log(
-                    "Final new-issue response:",
-                    finalResult
-                );
 
 
                 if (!finalResult.success) {
@@ -723,4 +696,402 @@ if (
                 "Photo selected successfully.";
         }
     );
+}
+
+/* --------------------------------------------------
+   Authority Issues Map
+-------------------------------------------------- */
+
+const authorityMapContainer =
+    document.querySelector("#authority-map");
+
+if (authorityMapContainer) {
+
+    let authorityIssuesMap = null;
+    let authorityIssueLayer = null;
+    let authorityRegionLayer = null;
+
+    const priorityColors = {
+        Low: "#16a34a",
+        Moderate: "#eab308",
+        High: "#f97316",
+        Critical: "#dc2626",
+        Unscored: "#64748b"
+    };
+
+    // Escape database values before inserting them into popups.
+    function escapeAuthorityMapHtml(value) {
+        return String(value ?? "").replace(
+            /[&<>"']/g,
+            character => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;"
+            })[character]
+        );
+    }
+
+
+    // Create the status filter.
+    const mapControls = document.createElement("div");
+
+    mapControls.style.marginBottom = "12px";
+
+    mapControls.innerHTML = `
+        <label for="authority-map-status">
+            <strong>Show Issues:</strong>
+        </label>
+
+        <select
+            id="authority-map-status"
+            style="margin-left: 8px; padding: 8px;"
+        >
+            <option value="active">
+                Active (Open + In Progress)
+            </option>
+
+            <option value="all">All Issues</option>
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
+            <option value="Rejected">Rejected</option>
+        </select>
+    `;
+
+    authorityMapContainer.before(mapControls);
+
+
+    // Status message for loading, errors and empty results.
+    const mapMessage = document.createElement("p");
+
+    mapMessage.setAttribute(
+        "role",
+        "status"
+    );
+
+    mapMessage.style.marginBottom = "10px";
+
+    mapControls.after(mapMessage);
+
+
+    // Create the priority legend.
+    const mapLegend = document.createElement("div");
+
+    mapLegend.style.display = "flex";
+    mapLegend.style.flexWrap = "wrap";
+    mapLegend.style.gap = "12px";
+    mapLegend.style.marginTop = "12px";
+    mapLegend.style.marginBottom = "12px";
+
+    mapLegend.innerHTML = Object.entries(priorityColors)
+        .map(([band, color]) => `
+            <span style="
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            ">
+                <span style="
+                    width: 12px;
+                    height: 12px;
+                    display: inline-block;
+                    border-radius: 50%;
+                    background: ${color};
+                "></span>
+
+                ${band}
+            </span>
+        `)
+        .join("");
+
+    authorityMapContainer.after(mapLegend);
+
+
+    // Initialize Leaflet only when the Authority map exists.
+    function initializeAuthorityIssuesMap() {
+
+        if (authorityIssuesMap) {
+            return;
+        }
+
+        authorityIssuesMap = L.map(
+            authorityMapContainer
+        ).setView(
+            [28.6139, 77.2090],
+            11
+        );
+
+        L.tileLayer(
+            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {
+                attribution:
+                    "&copy; OpenStreetMap contributors"
+            }
+        ).addTo(authorityIssuesMap);
+
+        authorityIssueLayer = L.layerGroup().addTo(
+            authorityIssuesMap
+        );
+
+        // Assigned service-region boundaries.
+        authorityRegionLayer = L.geoJSON([], {
+            style: {
+                color: "#2563eb",
+                weight: 3,
+                opacity: 0.9,
+                fillColor: "#3b82f6",
+                fillOpacity: 0.10
+            },
+
+            onEachFeature: function (feature, layer) {
+                const regionName =
+                    feature.properties?.name || "Assigned region";
+
+                layer.bindTooltip(regionName);
+            }
+        }).addTo(authorityIssuesMap);
+
+        authorityIssuesMap.invalidateSize();
+    }
+
+
+    // Fetch Issues from the existing Authority map API.
+    async function loadAuthorityIssues() {
+
+        const statusSelect =
+            document.querySelector("#authority-map-status");
+
+        const selectedStatus = statusSelect.value;
+
+        mapMessage.textContent = "Loading Issues...";
+
+        statusSelect.disabled = true;
+
+        try {
+
+            const response = await fetch(
+                `../../api/authority/issues-map.php?status=${encodeURIComponent(selectedStatus)
+                }`
+            );
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Could not load Issues."
+                );
+            }
+
+
+            initializeAuthorityIssuesMap();
+
+            authorityIssueLayer.clearLayers();
+            authorityRegionLayer.clearLayers();
+
+            const bounds = [];
+
+            // Draw every assigned region that has valid GeoJSON.
+            (result.regions || []).forEach(region => {
+                if (
+                    !region.boundary ||
+                    !["Polygon", "MultiPolygon"].includes(
+                        region.boundary.type
+                    )
+                ) {
+                    return;
+                }
+
+                authorityRegionLayer.addData({
+                    type: "Feature",
+                    properties: {
+                        name: region.name,
+                        region_id: region.region_id
+                    },
+                    geometry: region.boundary
+                });
+            });
+
+
+            // Draw every assigned region that has valid GeoJSON.
+            (result.regions || []).forEach(region => {
+                if (
+                    !region.boundary ||
+                    !["Polygon", "MultiPolygon"].includes(
+                        region.boundary.type
+                    )
+                ) {
+                    return;
+                }
+
+                authorityRegionLayer.addData({
+                    type: "Feature",
+                    properties: {
+                        name: region.name,
+                        region_id: region.region_id
+                    },
+                    geometry: region.boundary
+                });
+            });
+
+            const issues = result.issues || [];
+
+            issues.forEach(issue => {
+
+                const latitude = Number(issue.latitude);
+                const longitude = Number(issue.longitude);
+
+                if (
+                    !Number.isFinite(latitude) ||
+                    !Number.isFinite(longitude) ||
+                    latitude < -90 ||
+                    latitude > 90 ||
+                    longitude < -180 ||
+                    longitude > 180
+                ) {
+                    return;
+                }
+
+                const band = issue.priority_band || "Unscored";
+
+                const markerColor =
+                    priorityColors[band] || priorityColors.Low;
+
+                const markerIcon = L.divIcon({
+
+                    className: "authority-issue-marker",
+
+                    html: `
+                        <div style="
+                            width: 18px;
+                            height: 18px;
+                            box-sizing: border-box;
+                            border-radius: 50%;
+                            background: ${markerColor};
+                            border: 2px solid white;
+                            box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+                        "></div>
+                    `,
+
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9],
+                    popupAnchor: [0, -9]
+                });
+
+                const marker = L.marker(
+                    [latitude, longitude],
+                    { icon: markerIcon }
+                );
+
+                const issueUrl =
+                    `issue-details.php?id=${encodeURIComponent(issue.id)
+                    }`;
+
+                const popupContent = `
+                    <div>
+                        <strong>
+                            ${escapeAuthorityMapHtml(issue.issue_id)}
+                        </strong>
+
+                        <br>
+
+                        Category:
+                        ${escapeAuthorityMapHtml(issue.category_name)}
+
+                        <br>
+
+                        Status:
+                        ${escapeAuthorityMapHtml(issue.status)}
+
+                        <br>
+
+                        Priority:
+                        ${issue.priority_score === null || issue.priority_score === undefined
+                    ? "Unscored"
+                    : escapeAuthorityMapHtml(Number(issue.priority_score).toFixed(2))}
+                        (${escapeAuthorityMapHtml(band)})
+
+                        <br>
+
+                        Reports:
+                        ${escapeAuthorityMapHtml(issue.report_count)}
+
+                        <br><br>
+
+                        <a href="${issueUrl}">
+                            View Issue
+                        </a>
+                    </div>
+                `;
+
+                marker.bindPopup(popupContent);
+
+                authorityIssueLayer.addLayer(marker);
+
+                bounds.push([latitude, longitude]);
+            });
+
+
+
+            const regionBounds = authorityRegionLayer.getBounds();
+
+            if (regionBounds.isValid()) {
+                // Prefer the assigned region boundary so the
+                // full service area remains visible.
+                authorityIssuesMap.fitBounds(regionBounds, {
+                    padding: [30, 30],
+                    maxZoom: 14
+                });
+            } else if (bounds.length > 0) {
+                // Fallback when no assigned boundary is available.
+                if (bounds.length === 1) {
+                    authorityIssuesMap.setView(bounds[0], 16);
+                } else {
+                    authorityIssuesMap.fitBounds(bounds, {
+                        padding: [30, 30],
+                        maxZoom: 16
+                    });
+                }
+            }
+
+            if (bounds.length > 0) {
+                mapMessage.textContent =
+                    `Showing ${bounds.length} Issue(s).`;
+            } else {
+                mapMessage.textContent =
+                    "No Issues found for this filter.";
+            }
+
+            authorityIssuesMap.invalidateSize();
+
+
+        } catch (error) {
+
+            console.error(
+                "Authority map error:",
+                error
+            );
+
+            mapMessage.textContent =
+                "Could not load the Issues map. Please try again.";
+
+        } finally {
+
+            statusSelect.disabled = false;
+        }
+    }
+
+
+    // Reload markers whenever the selected status changes.
+    document
+        .querySelector("#authority-map-status")
+        .addEventListener(
+            "change",
+            loadAuthorityIssues
+        );
+
+
+    // Load the default Active view.
+    loadAuthorityIssues();
 }

@@ -1,6 +1,6 @@
 <?php
-require_once '../../includes/auth.php';
-require_once '../../includes/db.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/db.php';
 
 requireCitizenAuth();
 
@@ -69,11 +69,11 @@ $resolvedReports = (int) $stmt->fetchColumn();
 
 <body>
 
-    <?php include '../../includes/header.php'; ?>
+    <?php include __DIR__ . '/../../includes/header.php'; ?>
 
     <main class="app-layout">
 
-        <?php include '../../includes/sidebar.php'; ?>
+        <?php include __DIR__ . '/../../includes/sidebar.php'; ?>
 
         <section class="app-content">
 
@@ -216,7 +216,7 @@ $resolvedReports = (int) $stmt->fetchColumn();
 
     </main>
 
-    <?php include '../../includes/mobile-nav.php'; ?>
+    <?php include __DIR__ . '/../../includes/mobile-nav.php'; ?>
 
     <script src="../../assets/js/app.js"></script>
 

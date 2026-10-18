@@ -2,7 +2,25 @@
 
 header('Content-Type: application/json');
 
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Method not allowed. Use POST.'
+    ]);
+    exit;
+}
+
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/priority.php';
+require_once __DIR__ . '/../includes/geo.php';
+
+if (!isValidCsrfToken($_POST['csrf_token'] ?? null)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Your session token is missing or expired. Refresh the page and try again.']);
+    exit;
+}
 
 
 /*
@@ -634,215 +652,237 @@ if ($issue === null) {
      * First, find the active region containing
      * the reported issue location.
      */
-    $regionQuery = "
-        SELECT
-            id AS region_db_id,
-            region_id
-        FROM regions
-        WHERE is_active = 1
-          AND boundary IS NOT NULL
-          AND ST_Contains(
-              boundary,
-              ST_SRID(
-                  ST_GeomFromText(
-                      CONCAT(
-                          'POINT(',
-                          :reported_longitude,
-                          ' ',
-                          :reported_latitude,
-                          ')'
-                      )
-                  ),
-                  4326
-              )
-          )
-        LIMIT 1
-    ";
-
-    $regionStatement = $pdo->prepare(
-        $regionQuery
+    $region = findRegionForPoint(
+        $pdo,
+        (float) $reportedLatitude,
+        (float) $reportedLongitude
     );
 
-    $regionStatement->execute([
-        ':reported_longitude' =>
-        $reportedLongitude,
-
-        ':reported_latitude' =>
-        $reportedLatitude
-    ]);
-
-    $region = $regionStatement->fetch(
-        PDO::FETCH_ASSOC
-    );
-
-    if ($region === false) {
+    if ($region === null) {
         sendError(
             'The reported issue location is not inside an active service region.'
         );
     }
 
 
+
     /*
-     * Find an active authority covering this region.
-     *
-     * We use the authority with the category
-     * responsibility first, if one exists.
-     */
+ * Find the lowest applicable authority for this region
+ * and category.
+ *
+ * An authority is applicable only when it is active,
+ * assigned to the region, and assigned to the category.
+ */
     $authorityQuery = "
-        SELECT
-            a.id AS authority_db_id,
-            a.authority_id,
-            a.parent_authority_id
-        FROM authorities AS a
-        INNER JOIN authority_regions AS ar
-            ON ar.authority_id = a.id
-           AND ar.region_id = :region_db_id
-           AND ar.is_active = 1
-        WHERE a.is_active = 1
-        ORDER BY a.id
-        LIMIT 1
-    ";
+    SELECT
+        a.id AS authority_db_id,
+        a.authority_id,
+        a.parent_authority_id
+    FROM authorities AS a
+    INNER JOIN authority_regions AS ar
+        ON ar.authority_id = a.id
+       AND ar.region_id = :region_db_id
+       AND ar.is_active = 1
+    INNER JOIN authority_categories AS ac
+        ON ac.authority_id = a.id
+       AND ac.category_id = :category_id
+       AND ac.is_active = 1
+    WHERE a.is_active = 1
+    ORDER BY a.id ASC
+";
 
-    $authorityStatement = $pdo->prepare(
-        $authorityQuery
-    );
-
-    $authorityStatement->execute([
-        ':region_db_id' =>
-        $region['region_db_id']
-    ]);
-
-    $authority = $authorityStatement->fetch(
-        PDO::FETCH_ASSOC
-    );
-
-    if ($authority === false) {
-        sendError(
-            'No active authority is assigned to this service region.'
-        );
-    }
-
+    $authorityStatement = $pdo->prepare($authorityQuery);
 
     /*
-     * Follow the authority hierarchy until we find
-     * an authority responsible for this category.
+     * Walk the region hierarchy from the most local region upwards.
+     * The first level that has an applicable authority wins, so an
+     * issue in a district with no authority for the category moves up
+     * to the parent region's authority.
      */
-    $currentAuthority = $authority;
+    $regionParentRows = $pdo->query(
+        'SELECT id, parent_region_id FROM regions WHERE is_active = 1'
+    )->fetchAll(PDO::FETCH_ASSOC);
 
-    while ($currentAuthority !== false) {
+    $regionParents = [];
+    foreach ($regionParentRows as $regionRow) {
+        $regionParents[(int) $regionRow['id']] =
+            $regionRow['parent_region_id'] === null
+            ? null
+            : (int) $regionRow['parent_region_id'];
+    }
 
-        $categoryQuery = "
-            SELECT
-                a.id AS authority_db_id,
-                a.authority_id,
-                a.parent_authority_id
-            FROM authorities AS a
-            INNER JOIN authority_regions AS ar
-                ON ar.authority_id = a.id
-               AND ar.region_id = :region_db_id
-               AND ar.is_active = 1
+    $candidates = [];
+    $regionLevelId = (int) $region['region_db_id'];
+    $visitedRegions = [];
 
-            INNER JOIN authority_categories AS ac
-                ON ac.authority_id = a.id
-               AND ac.category_id = :category_id
-               AND ac.is_active = 1
+    while ($regionLevelId !== null && !isset($visitedRegions[$regionLevelId])) {
+        $visitedRegions[$regionLevelId] = true;
 
-            WHERE a.id = :authority_db_id
-              AND a.is_active = 1
-            LIMIT 1
-        ";
-
-        $categoryStatement = $pdo->prepare(
-            $categoryQuery
-        );
-
-        $categoryStatement->execute([
-            ':region_db_id' =>
-            $region['region_db_id'],
-
-            ':category_id' =>
-            $categoryRecord['id'],
-
-            ':authority_db_id' =>
-            $currentAuthority['authority_db_id']
+        $authorityStatement->execute([
+            ':region_db_id' => $regionLevelId,
+            ':category_id' => $categoryRecord['id']
         ]);
 
-        $responsibleAuthority =
-            $categoryStatement->fetch(
-                PDO::FETCH_ASSOC
-            );
+        $candidates = $authorityStatement->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($responsibleAuthority !== false) {
-
-            $routing = [
-                'region_db_id' =>
-                $region['region_db_id'],
-
-                'region_id' =>
-                $region['region_id'],
-
-                'authority_db_id' =>
-                $responsibleAuthority['authority_db_id'],
-
-                'authority_id' =>
-                $responsibleAuthority['authority_id']
-            ];
-
+        if (count($candidates) > 0) {
             break;
         }
 
-
-        /*
-         * The current authority does not handle
-         * this category. Move to its parent.
-         */
-        if (
-            empty($currentAuthority['parent_authority_id'])
-        ) {
-            $currentAuthority = false;
-            break;
-        }
-
-
-        /*
-         * Load the parent authority.
-         */
-        $parentQuery = "
-            SELECT
-                id AS authority_db_id,
-                authority_id,
-                parent_authority_id
-            FROM authorities
-            WHERE id = :parent_authority_id
-              AND is_active = 1
-            LIMIT 1
-        ";
-
-        $parentStatement = $pdo->prepare(
-            $parentQuery
-        );
-
-        $parentStatement->execute([
-            ':parent_authority_id' =>
-            $currentAuthority['parent_authority_id']
-        ]);
-
-        $currentAuthority =
-            $parentStatement->fetch(
-                PDO::FETCH_ASSOC
-            );
+        $regionLevelId = $regionParents[$regionLevelId] ?? null;
     }
 
-
-    /*
-     * No authority in the hierarchy handles
-     * the selected category.
-     */
-    if (!isset($routing)) {
+    if (count($candidates) === 0) {
         sendError(
             'No authority is currently responsible for this location and issue category.'
         );
     }
+
+    /*
+ * Build a lookup of active authorities so we can follow
+ * parent relationships using database IDs.
+ */
+    $allAuthoritiesStatement = $pdo->query("
+    SELECT id, parent_authority_id
+    FROM authorities
+    WHERE is_active = 1
+");
+
+    $parentById = [];
+
+    foreach ($allAuthoritiesStatement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $parentById[(int) $row['id']] =
+            $row['parent_authority_id'] === null
+            ? null
+            : (int) $row['parent_authority_id'];
+    }
+
+    /*
+ * Reject cycles in the parent chains of applicable candidates.
+ */
+    foreach ($candidates as $candidate) {
+        $currentId = (int) $candidate['authority_db_id'];
+        $visited = [];
+
+        while (
+            array_key_exists($currentId, $parentById) &&
+            $parentById[$currentId] !== null
+        ) {
+            if (isset($visited[$currentId])) {
+                error_log(
+                    'InfraFix authority hierarchy cycle detected.'
+                );
+
+                sendError(
+                    'The authority hierarchy is misconfigured. Please contact the administrator.',
+                    500
+                );
+            }
+
+            $visited[$currentId] = true;
+            $parentId = $parentById[$currentId];
+
+            if (isset($visited[$parentId])) {
+                error_log(
+                    'InfraFix authority hierarchy cycle detected.'
+                );
+
+                sendError(
+                    'The authority hierarchy is misconfigured. Please contact the administrator.',
+                    500
+                );
+            }
+
+            if (!array_key_exists($parentId, $parentById)) {
+                break;
+            }
+
+            $currentId = $parentId;
+        }
+    }
+
+    /*
+ * A candidate is not the lowest applicable authority if
+ * another applicable candidate is its descendant.
+ */
+
+    $lowestCandidates = [];
+
+    foreach ($candidates as $candidate) {
+        $candidateId = (int) $candidate['authority_db_id'];
+        $hasApplicableDescendant = false;
+
+        foreach ($candidates as $otherCandidate) {
+            $otherId = (int) $otherCandidate['authority_db_id'];
+
+            if ($otherId === $candidateId) {
+                continue;
+            }
+
+            $visited = [];
+            $currentId = $otherId;
+
+            while (
+                isset($parentById[$currentId]) &&
+                $parentById[$currentId] !== null
+            ) {
+                $parentId = $parentById[$currentId];
+
+                // Protect against a malformed hierarchy containing a cycle.
+                if (isset($visited[$parentId])) {
+                    break;
+                }
+
+                $visited[$parentId] = true;
+
+                if ($parentId === $candidateId) {
+                    $hasApplicableDescendant = true;
+                    break;
+                }
+
+                if (!isset($parentById[$parentId])) {
+                    break;
+                }
+
+                $currentId = $parentId;
+            }
+
+            if ($hasApplicableDescendant) {
+                break;
+            }
+        }
+
+        if (!$hasApplicableDescendant) {
+            $lowestCandidates[] = $candidate;
+        }
+    }
+
+    /*
+ * The specification assumes no ambiguous overlap between
+ * unrelated authorities at the same applicable level.
+ * Reject ambiguous configuration rather than route arbitrarily.
+ */
+    if (count($lowestCandidates) !== 1) {
+        error_log(
+            'InfraFix authority routing ambiguity for region ' .
+                $region['region_id'] . ' and category ' .
+                $categoryRecord['category_id']
+        );
+
+        sendError(
+            'The responsible authority could not be determined unambiguously. Please contact the administrator.',
+            500
+        );
+    }
+
+    $responsibleAuthority = $lowestCandidates[0];
+
+    $routing = [
+        'region_db_id' => $region['region_db_id'],
+        'region_id' => $region['region_id'],
+        'authority_db_id' => $responsibleAuthority['authority_db_id'],
+        'authority_id' => $responsibleAuthority['authority_id']
+    ];
 }
 
 /*
@@ -1191,6 +1231,20 @@ try {
      * Everything succeeded.
      */
     $pdo->commit();
+
+    // --------------------------------------------------
+    // Recalculate Issue priority
+    // --------------------------------------------------
+
+    try {
+        updateIssuePriority($issueDatabaseId);
+    } catch (Throwable $priorityException) {
+        error_log(
+            'InfraFix priority update failed for Issue ' .
+                $issueDatabaseId . ': ' .
+                $priorityException->getMessage()
+        );
+    }
 
 
     echo json_encode([

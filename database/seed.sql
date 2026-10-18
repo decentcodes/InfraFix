@@ -1,7 +1,7 @@
 -- InfraFix V1 seed data
 -- Finalized prioritization configuration
 
-USE INFRAFIX;
+-- Select your (empty-schema) database before running this file.
 
 
 -- ============================================================
@@ -19,6 +19,35 @@ VALUES
     ('CAT-WIRING', 'Exposed Electrical Wiring', 'exposed-wiring'),
     ('CAT-DRAINAGE', 'Blocked Drainage', 'blocked-drainage');
 
+-- ============================================================
+-- REGIONS
+-- ============================================================
+
+INSERT INTO regions
+    (region_id, name, region_type, parent_region_id)
+VALUES
+    ('REG-DELHI', 'Delhi', 'UT', NULL);
+
+SET @delhi_region_id = (
+    SELECT id
+    FROM regions
+    WHERE region_id = 'REG-DELHI'
+);
+
+INSERT INTO regions
+    (region_id, name, region_type, parent_region_id)
+VALUES
+    ('REG-CENTRAL-DELHI', 'Central Delhi', 'District', @delhi_region_id),
+    ('REG-EAST-DELHI', 'East Delhi', 'District', @delhi_region_id),
+    ('REG-NEW-DELHI', 'New Delhi', 'District', @delhi_region_id),
+    ('REG-NORTH-DELHI', 'North Delhi', 'District', @delhi_region_id),
+    ('REG-NORTH-EAST-DELHI', 'North East Delhi', 'District', @delhi_region_id),
+    ('REG-NORTH-WEST-DELHI', 'North West Delhi', 'District', @delhi_region_id),
+    ('REG-SHAHDARA', 'Shahdara', 'District', @delhi_region_id),
+    ('REG-SOUTH-DELHI', 'South Delhi', 'District', @delhi_region_id),
+    ('REG-SOUTH-EAST-DELHI', 'South East Delhi', 'District', @delhi_region_id),
+    ('REG-SOUTH-WEST-DELHI', 'South West Delhi', 'District', @delhi_region_id),
+    ('REG-WEST-DELHI', 'West Delhi', 'District', @delhi_region_id);
 
 -- ============================================================
 -- PRIORITY FACTORS
@@ -173,3 +202,14 @@ SELECT c.id, 'snow',
            WHEN 'blocked-drainage' THEN 2
        END
 FROM categories c;
+
+-- ============================================================
+-- APP SETTINGS
+-- ============================================================
+-- otp_mode: 'demo' shows the OTP on screen (college demo only).
+-- weather_condition: None | Rain | Snow (used by priority scoring).
+INSERT INTO app_settings (setting_key, setting_value)
+VALUES
+    ('otp_mode', 'demo'),
+    ('weather_condition', 'Rain'),
+    ('weather_mode', 'manual');

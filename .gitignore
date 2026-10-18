@@ -1,15 +1,9 @@
-# Local configuration / secrets
-includes/config.php
+# Local credentials and generated data
 includes/db.php
-uploads/
+database/pois.sql
+delhi_11_districts.geojson
+database/structure.sql
 
-# Environment files
-.env
-.env.*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor settings
-.vscode/
+# User uploads (keep the folder and its rules)
+uploads/reports/*
+!uploads/reports/.gitkeep

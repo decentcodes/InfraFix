@@ -1,5 +1,5 @@
 <?php
-require_once '../../includes/auth.php';
+require_once __DIR__ . '/../../includes/auth.php';
 
 if (isCitizenLoggedIn()) {
     header('Location: ../citizen/home.php');
@@ -16,18 +16,15 @@ if (isCitizenLoggedIn()) {
 
     <title>Login • InfraFix</title>
 
-    <link rel="stylesheet" href="../../assets/css/style.css">
 </head>
 
 <body>
 
+    <?php require_once __DIR__ . '/../../includes/header.php'; ?>
+
     <main class="auth-page">
 
         <div class="auth-container">
-
-            <a href="../../index.php" class="auth-logo">
-                InfraFix
-            </a>
 
             <div class="auth-card">
 
@@ -64,6 +61,7 @@ if (isCitizenLoggedIn()) {
     </main>
 
     <script>
+        const csrfToken = <?= json_encode(csrfToken()) ?>;
         const phoneForm = document.getElementById('phone-form');
         const authFlow = document.getElementById('auth-flow');
         const authMessage = document.getElementById('auth-message');
@@ -83,7 +81,8 @@ if (isCitizenLoggedIn()) {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: new URLSearchParams({
-                        phone: phone
+                        phone: phone,
+                        csrf_token: csrfToken
                     })
                 });
 
@@ -149,7 +148,8 @@ if (isCitizenLoggedIn()) {
                         },
                         body: new URLSearchParams({
                             phone: phone,
-                            password: password
+                            password: password,
+                            csrf_token: csrfToken
                         })
                     });
 
@@ -181,7 +181,8 @@ if (isCitizenLoggedIn()) {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: new URLSearchParams({
-                        phone: phone
+                        phone: phone,
+                        csrf_token: csrfToken
                     })
                 });
 
@@ -198,7 +199,12 @@ if (isCitizenLoggedIn()) {
                 authFlow.innerHTML = `
             <div class="auth-header">
                 <h2>Verify your phone</h2>
-                <p>We sent a verification code to your phone.</p>
+                <p>${data.demo_otp
+                    ? 'Demo mode: no SMS is sent. Use the code below.'
+                    : 'Enter the verification code sent to your phone.'}</p>
+                ${data.demo_otp
+                    ? '<p class="demo-otp-box"><strong>Demo OTP: ' + String(data.demo_otp).replace(/[^0-9]/g, '') + '</strong></p>'
+                    : ''}
             </div>
 
             <form id="otp-form">
@@ -237,7 +243,8 @@ if (isCitizenLoggedIn()) {
                             },
                             body: new URLSearchParams({
                                 phone: phone,
-                                otp: otp
+                                otp: otp,
+                                csrf_token: csrfToken
                             })
                         });
 
@@ -313,7 +320,8 @@ if (isCitizenLoggedIn()) {
                                 },
                                 body: new URLSearchParams({
                                     password: password,
-                                    confirm_password: confirmPassword
+                                    confirm_password: confirmPassword,
+                                    csrf_token: csrfToken
                                 })
                             });
 
@@ -324,7 +332,6 @@ if (isCitizenLoggedIn()) {
                                 return;
                             }
 
-                            console.log('Created citizen ID:', data.citizen_id);
 
                             window.location.href = '../citizen/home.php';
 
@@ -335,8 +342,6 @@ if (isCitizenLoggedIn()) {
                         }
                     });
                 }
-
-                console.log('Development OTP:', data.development_otp);
 
             } catch (error) {
                 console.error(error);

@@ -2,8 +2,18 @@
 
 header('Content-Type: application/json');
 
-require_once '../../includes/db.php';
-require_once '../../includes/auth.php';
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Method not allowed. Use POST.'
+    ]);
+    exit;
+}
+
+require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/auth.php';
 
 function sendError($message, $statusCode = 400)
 {
@@ -14,6 +24,15 @@ function sendError($message, $statusCode = 400)
         'message' => $message
     ]);
 
+    exit;
+}
+
+if (!isValidCsrfToken($_POST['csrf_token'] ?? null)) {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Your session token is invalid or expired. Refresh the page and try again.'
+    ]);
     exit;
 }
 

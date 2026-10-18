@@ -1,10 +1,10 @@
 <?php
 
-require_once '../../includes/auth.php';
+require_once __DIR__ . '/../../includes/auth.php';
 
 requireCitizenAuth();
 
-require_once '../../includes/db.php';
+require_once __DIR__ . '/../../includes/db.php';
 
 
 /*
@@ -179,6 +179,52 @@ $photoStatement->execute([
 
 $photo = $photoStatement->fetch(PDO::FETCH_ASSOC);
 
+
+/*
+ * Resolution details and this citizen's feedback (once resolved).
+ */
+$resolution = null;
+$myFeedback = null;
+
+if (in_array($report['status'], ['Resolved', 'Closed'], true)) {
+
+    $resolutionStatement = $pdo->prepare("
+        SELECT
+            ir.id,
+            ir.remark,
+            ir.resolved_at,
+            a.public_name AS authority_name
+        FROM issue_resolutions AS ir
+        INNER JOIN authorities AS a
+            ON a.id = ir.authority_id
+        WHERE ir.issue_id = (
+            SELECT id FROM issues WHERE issue_id = :issue_id
+        )
+        ORDER BY ir.id DESC
+        LIMIT 1
+    ");
+
+    $resolutionStatement->execute([':issue_id' => $report['issue_id']]);
+    $resolution = $resolutionStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if ($resolution) {
+        $feedbackStatement = $pdo->prepare("
+            SELECT rating, comment, submitted_at
+            FROM resolution_feedback
+            WHERE resolution_id = :resolution_id
+              AND citizen_id = :citizen_id
+            LIMIT 1
+        ");
+
+        $feedbackStatement->execute([
+            ':resolution_id' => $resolution['id'],
+            ':citizen_id' => $citizenId
+        ]);
+
+        $myFeedback = $feedbackStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -209,12 +255,12 @@ $photo = $photoStatement->fetch(PDO::FETCH_ASSOC);
 
 <body>
 
-    <?php include '../../includes/header.php'; ?>
+    <?php include __DIR__ . '/../../includes/header.php'; ?>
 
 
     <main class="app-layout">
 
-        <?php include '../../includes/sidebar.php'; ?>
+        <?php include __DIR__ . '/../../includes/sidebar.php'; ?>
 
 
         <section class="app-content">
@@ -426,6 +472,121 @@ $photo = $photoStatement->fetch(PDO::FETCH_ASSOC);
                 <?php endif; ?>
 
             </section>
+
+
+            <!-- Resolution and feedback -->
+
+            <?php if ($resolution): ?>
+
+                <section class="details-section">
+
+                    <div class="details-section-header">
+                        <div>
+                            <p class="eyebrow">Resolution</p>
+                            <h2>Reported as resolved</h2>
+                        </div>
+                    </div>
+
+                    <div class="details-description">
+                        <span class="detail-label">Authority remark:</span>
+                        <p><?= nl2br(htmlspecialchars($resolution['remark'])) ?></p>
+                        <p>
+                            <?= htmlspecialchars($resolution['authority_name']) ?>,
+                            <?= htmlspecialchars(date('d M Y, H:i', strtotime($resolution['resolved_at']))) ?>
+                        </p>
+                        <p>
+                            InfraFix does not independently verify repairs.
+                            Your feedback is shared as additional information.
+                        </p>
+                    </div>
+
+                    <?php if ($myFeedback): ?>
+
+                        <div class="details-description">
+                            <span class="detail-label">Your feedback:</span>
+                            <p>
+                                <?= (int) $myFeedback['rating'] ?> / 5
+                                <?php if (!empty($myFeedback['comment'])): ?>
+                                    - <?= htmlspecialchars($myFeedback['comment']) ?>
+                                <?php endif; ?>
+                            </p>
+                        </div>
+
+                    <?php else: ?>
+
+                        <form id="feedback-form">
+                            <input
+                                type="hidden"
+                                name="csrf_token"
+                                value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input
+                                type="hidden"
+                                name="report_id"
+                                value="<?= htmlspecialchars($report['report_id'], ENT_QUOTES, 'UTF-8') ?>">
+
+                            <div class="form-group">
+                                <label for="feedback-rating">
+                                    Was the problem fixed? Rate the resolution
+                                </label>
+                                <select id="feedback-rating" name="rating" required>
+                                    <option value="">Choose...</option>
+                                    <option value="5">5 - Fully fixed</option>
+                                    <option value="4">4 - Mostly fixed</option>
+                                    <option value="3">3 - Partly fixed</option>
+                                    <option value="2">2 - Barely fixed</option>
+                                    <option value="1">1 - Not fixed</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="feedback-comment">Comment (optional)</label>
+                                <textarea
+                                    id="feedback-comment"
+                                    name="comment"
+                                    maxlength="500"
+                                    rows="3"></textarea>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">
+                                Submit feedback
+                            </button>
+                            <p id="feedback-message" class="form-message"></p>
+                        </form>
+
+                        <script>
+                            document
+                                .getElementById('feedback-form')
+                                .addEventListener('submit', async function (event) {
+                                    event.preventDefault();
+
+                                    const message = document.getElementById('feedback-message');
+                                    message.textContent = 'Submitting...';
+
+                                    try {
+                                        const response = await fetch(
+                                            '../../api/resolution-feedback.php',
+                                            { method: 'POST', body: new FormData(event.target) }
+                                        );
+                                        const data = await response.json();
+
+                                        message.textContent =
+                                            data.message || 'Could not save feedback.';
+
+                                        if (data.success) {
+                                            setTimeout(() => window.location.reload(), 800);
+                                        }
+                                    } catch (error) {
+                                        message.textContent =
+                                            'Something went wrong. Please try again.';
+                                    }
+                                });
+                        </script>
+
+                    <?php endif; ?>
+
+                </section>
+
+            <?php endif; ?>
 
 
             <!-- Issue information -->
@@ -663,7 +824,7 @@ $photo = $photoStatement->fetch(PDO::FETCH_ASSOC);
     </main>
 
 
-    <?php include '../../includes/mobile-nav.php'; ?>
+    <?php include __DIR__ . '/../../includes/mobile-nav.php'; ?>
 
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

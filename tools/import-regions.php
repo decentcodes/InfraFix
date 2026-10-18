@@ -1,0 +1,217 @@
+<?php
+
+/*
+ * One-time CLI helper: turn a Delhi districts GeoJSON file into SQL that
+ * fills regions.boundary_geojson.
+ *
+ * Usage (from the project root, on your own computer):
+ *   php tools/import-regions.php districts.geojson --apply
+ *       writes directly to the database in includes/db.php (recommended)
+ *   php tools/import-regions.php districts.geojson > database/region-boundaries.sql
+ *       writes an SQL file instead (import it with phpMyAdmin or the mysql client,
+ *       not by opening it in MySQL Workbench, which struggles with huge lines)
+ *   Add --with-parent to also store the combined Delhi boundary.
+ * The script prints which districts matched and which did not to STDERR.
+ * It does not invent or edit boundaries; it only matches names, rounds
+ * coordinates to 5 decimals (~1 m) and drops repeated points to keep the
+ * file small. The Delhi parent region gets the combined district shapes.
+ */
+
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
+$inputPath = $argv[1] ?? '';
+
+if ($inputPath === '' || !is_file($inputPath)) {
+    fwrite(STDERR, "Usage: php tools/import-regions.php <districts.geojson>\n");
+    exit(1);
+}
+
+$decoded = json_decode((string) file_get_contents($inputPath), true);
+
+if (!is_array($decoded)) {
+    fwrite(STDERR, "Input is not valid JSON.\n");
+    exit(1);
+}
+
+$features = ($decoded['type'] ?? '') === 'FeatureCollection'
+    ? ($decoded['features'] ?? [])
+    : [$decoded];
+
+// Normalised district name => region_id used in database/seed.sql
+$wanted = [
+    'centraldelhi' => 'REG-CENTRAL-DELHI',
+    'central' => 'REG-CENTRAL-DELHI',
+    'eastdelhi' => 'REG-EAST-DELHI',
+    'east' => 'REG-EAST-DELHI',
+    'newdelhi' => 'REG-NEW-DELHI',
+    'northdelhi' => 'REG-NORTH-DELHI',
+    'north' => 'REG-NORTH-DELHI',
+    'northeastdelhi' => 'REG-NORTH-EAST-DELHI',
+    'northeast' => 'REG-NORTH-EAST-DELHI',
+    'northwestdelhi' => 'REG-NORTH-WEST-DELHI',
+    'northwest' => 'REG-NORTH-WEST-DELHI',
+    'shahdara' => 'REG-SHAHDARA',
+    'southdelhi' => 'REG-SOUTH-DELHI',
+    'south' => 'REG-SOUTH-DELHI',
+    'southeastdelhi' => 'REG-SOUTH-EAST-DELHI',
+    'southeast' => 'REG-SOUTH-EAST-DELHI',
+    'southwestdelhi' => 'REG-SOUTH-WEST-DELHI',
+    'southwest' => 'REG-SOUTH-WEST-DELHI',
+    'westdelhi' => 'REG-WEST-DELHI',
+    'west' => 'REG-WEST-DELHI',
+];
+
+$nameKeys = ['district_name', 'district', 'DISTRICT', 'dtname', 'DISTRICT_N', 'NAME_2', 'name', 'NAME', 'Name', 'dist_name'];
+
+function normaliseName(string $name): string
+{
+    return preg_replace('/[^a-z]/', '', strtolower($name));
+}
+
+function roundRing(array $ring): array
+{
+    $out = [];
+    $last = null;
+
+    foreach ($ring as $point) {
+        $p = [round((float) $point[0], 5), round((float) $point[1], 5)];
+
+        if ($last === null || $p !== $last) {
+            $out[] = $p;
+            $last = $p;
+        }
+    }
+
+    return $out;
+}
+
+/** Return a list of polygons (each a list of rings), rounded. */
+function polygonsOf(array $geometry): array
+{
+    $type = $geometry['type'] ?? '';
+    $coords = $geometry['coordinates'] ?? [];
+
+    if ($type === 'Polygon') {
+        $coords = [$coords];
+    } elseif ($type !== 'MultiPolygon') {
+        return [];
+    }
+
+    $polygons = [];
+
+    foreach ($coords as $polygon) {
+        $rings = [];
+
+        foreach ($polygon as $ring) {
+            $rounded = roundRing($ring);
+
+            if (count($rounded) >= 4) {
+                $rings[] = $rounded;
+            }
+        }
+
+        if ($rings !== []) {
+            $polygons[] = $rings;
+        }
+    }
+
+    return $polygons;
+}
+
+function toGeometry(array $polygons): array
+{
+    return count($polygons) === 1
+        ? ['type' => 'Polygon', 'coordinates' => $polygons[0]]
+        : ['type' => 'MultiPolygon', 'coordinates' => $polygons];
+}
+
+$byRegion = [];
+$unmatched = [];
+
+foreach ($features as $feature) {
+    $properties = $feature['properties'] ?? [];
+    $label = '';
+
+    foreach ($nameKeys as $key) {
+        if (isset($properties[$key]) && is_string($properties[$key]) && $properties[$key] !== '') {
+            $label = $properties[$key];
+            break;
+        }
+    }
+
+    $regionId = $wanted[normaliseName($label)] ?? null;
+    $polygons = polygonsOf($feature['geometry'] ?? []);
+
+    if ($regionId === null || $polygons === []) {
+        $unmatched[] = $label === '' ? '(no name property)' : $label;
+        continue;
+    }
+
+    $byRegion[$regionId] = array_merge($byRegion[$regionId] ?? [], $polygons);
+}
+
+$allPolygons = [];
+$apply = in_array('--apply', $argv, true);
+$withParent = in_array('--with-parent', $argv, true);
+$pdo = null;
+
+if ($apply) {
+    // Writes straight to the database configured in includes/db.php
+    // (no SQL file, so MySQL Workbench is not needed for the big strings).
+    require_once __DIR__ . '/../includes/db.php';
+} else {
+    echo "-- Generated by tools/import-regions.php from " . basename($inputPath) . "\n";
+    echo "-- Run once after seed.sql. Safe to re-run: it only updates boundary_geojson.\n\n";
+}
+
+function saveBoundary(?PDO $pdo, string $regionId, string $json): void
+{
+    if ($pdo !== null) {
+        $stmt = $pdo->prepare(
+            'UPDATE regions SET boundary_geojson = ? WHERE region_id = ?'
+        );
+        $stmt->execute([$json, $regionId]);
+        return;
+    }
+
+    echo "UPDATE regions SET boundary_geojson = '"
+        . str_replace("'", "''", $json)
+        . "' WHERE region_id = '" . $regionId . "';\n";
+}
+
+foreach ($byRegion as $regionId => $polygons) {
+    $json = json_encode(toGeometry($polygons), JSON_UNESCAPED_SLASHES);
+    $allPolygons = array_merge($allPolygons, $polygons);
+
+    saveBoundary($apply ? $pdo : null, $regionId, $json);
+
+    fwrite(STDERR, "matched   $regionId (" . count($polygons) . " polygon(s))\n");
+}
+
+// The parent (REG-DELHI) boundary is optional: points are always matched
+// to a district first. Skipped by default to keep the output small.
+if ($withParent && $allPolygons !== []) {
+    $json = json_encode(toGeometry($allPolygons), JSON_UNESCAPED_SLASHES);
+    saveBoundary($apply ? $pdo : null, 'REG-DELHI', $json);
+    fwrite(STDERR, "built     REG-DELHI from the combined districts\n");
+}
+
+if ($apply) {
+    fwrite(STDERR, "Applied to the database configured in includes/db.php.\n");
+}
+
+foreach (array_unique($unmatched) as $name) {
+    fwrite(STDERR, "UNMATCHED $name\n");
+}
+
+$missing = array_diff(
+    array_unique(array_values($wanted)),
+    array_keys($byRegion)
+);
+
+foreach ($missing as $regionId) {
+    fwrite(STDERR, "MISSING   $regionId (no matching feature in the file)\n");
+}
