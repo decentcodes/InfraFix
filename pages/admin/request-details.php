@@ -227,26 +227,73 @@ require_once __DIR__ . '/../../includes/header.php';
 
         <h2>Contact Verification</h2>
 
-        <div class="dashboard-card">
+        <div
+            class="dashboard-card"
+            id="contact-verification"
+            data-request-id="<?= (int) $request['id'] ?>"
+            data-csrf="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
 
             <p>
-                <strong>Phone Verification:</strong>
+                Verify these contact details yourself (for example by
+                calling or emailing the authority), then mark them here.
+            </p>
+
+            <p>
+                <strong>Phone:</strong>
+                <?= htmlspecialchars($request['phone']) ?>
                 <?php if ($request['phone_verified_at']): ?>
                     <span class="status-badge status-approved">Verified</span>
+                    <small>
+                        <?= htmlspecialchars(date('d M Y, H:i', strtotime($request['phone_verified_at']))) ?>
+                    </small>
+                    <button
+                        type="button"
+                        class="btn btn-secondary verify-contact-button"
+                        data-contact="phone"
+                        data-verified="0">
+                        Remove verification
+                    </button>
                 <?php else: ?>
                     <span class="status-badge status-pending">Not verified</span>
+                    <button
+                        type="button"
+                        class="btn btn-secondary verify-contact-button"
+                        data-contact="phone"
+                        data-verified="1">
+                        Mark phone verified
+                    </button>
                 <?php endif; ?>
             </p>
 
 
             <p>
-                <strong>Email Verification:</strong>
+                <strong>Email:</strong>
+                <?= htmlspecialchars($request['email']) ?>
                 <?php if ($request['email_verified_at']): ?>
                     <span class="status-badge status-approved">Verified</span>
+                    <small>
+                        <?= htmlspecialchars(date('d M Y, H:i', strtotime($request['email_verified_at']))) ?>
+                    </small>
+                    <button
+                        type="button"
+                        class="btn btn-secondary verify-contact-button"
+                        data-contact="email"
+                        data-verified="0">
+                        Remove verification
+                    </button>
                 <?php else: ?>
                     <span class="status-badge status-pending">Not verified</span>
+                    <button
+                        type="button"
+                        class="btn btn-secondary verify-contact-button"
+                        data-contact="email"
+                        data-verified="1">
+                        Mark email verified
+                    </button>
                 <?php endif; ?>
             </p>
+
+            <p id="verify-contact-message" class="form-message"></p>
 
         </div>
 
@@ -487,5 +534,48 @@ require_once __DIR__ . '/../../includes/header.php';
 
     }
 </script>
+
+<script>
+    document.querySelectorAll('.verify-contact-button').forEach(function (button) {
+
+        button.addEventListener('click', async function () {
+
+            const card = document.getElementById('contact-verification');
+            const message = document.getElementById('verify-contact-message');
+
+            const formData = new FormData();
+            formData.append('csrf_token', card.dataset.csrf);
+            formData.append('request_id', card.dataset.requestId);
+            formData.append('contact', button.dataset.contact);
+            formData.append('verified', button.dataset.verified);
+
+            button.disabled = true;
+            message.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(
+                    '../../api/admin/verify-contact.php',
+                    { method: 'POST', body: formData }
+                );
+
+                const data = await response.json();
+
+                if (data.success) {
+                    window.location.reload();
+                    return;
+                }
+
+                message.textContent =
+                    data.message || 'Could not update the verification status.';
+                button.disabled = false;
+
+            } catch (error) {
+                message.textContent = 'Something went wrong. Please try again.';
+                button.disabled = false;
+            }
+        });
+    });
+</script>
+
 
 <?php require_once __DIR__ . '/../../includes/mobile-nav.php'; ?>
