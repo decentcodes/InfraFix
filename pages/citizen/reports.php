@@ -85,6 +85,7 @@ $reports = $statement->fetchAll(PDO::FETCH_ASSOC);
         content="width=device-width, initial-scale=1.0">
 
     <title>My Reports — InfraFix</title>
+    <?php require_once __DIR__ . '/../../includes/favicon.php'; ?>
 
     <link
         rel="stylesheet"

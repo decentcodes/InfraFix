@@ -224,5 +224,3 @@ document.getElementById('authority-request-form').addEventListener('submit', asy
 
 });
 </script>
-
-<?php require_once __DIR__ . '/../../includes/mobile-nav.php'; ?>

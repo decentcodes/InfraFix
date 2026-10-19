@@ -364,11 +364,15 @@ a {
 
 @media (max-width: 768px) {
     .site-header {
+        flex-wrap: wrap;
+        row-gap: var(--space-sm);
         padding: var(--space-md);
     }
 
     .main-nav {
-        gap: var(--space-md);
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--space-xs) var(--space-md);
     }
 
     .hero {

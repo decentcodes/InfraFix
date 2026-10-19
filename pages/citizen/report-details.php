@@ -241,6 +241,7 @@ if (in_array($report['status'], ['Resolved', 'Closed'], true)) {
     <title>
         Report Details — InfraFix
     </title>
+    <?php require_once __DIR__ . '/../../includes/favicon.php'; ?>
 
     <link
         rel="stylesheet"
