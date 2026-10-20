@@ -18,6 +18,11 @@ try {
     );
 
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Make MySQL's NOW()/CURRENT_TIMESTAMP match the PHP timezone above.
+    // Hosting providers often run the database server in another timezone
+    // (for example US Pacific), which shifts every saved timestamp.
+    $pdo->exec("SET time_zone = '+05:30'");
 } catch (PDOException $e) {
     // Do not disclose database details to visitors.
     error_log('InfraFix database connection failed: ' . $e->getMessage());
