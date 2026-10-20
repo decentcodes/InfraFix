@@ -8,6 +8,15 @@
     <title>InfraFix</title>
     <?php require_once __DIR__ . '/includes/favicon.php'; ?>
 
+    <script>
+        // Apply the saved theme before the page paints (no light-mode flash).
+        try {
+            if (localStorage.getItem('infrafix-theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch (error) {}
+    </script>
+
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
