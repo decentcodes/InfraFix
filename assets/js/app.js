@@ -913,28 +913,6 @@ if (authorityMapContainer) {
                 });
             });
 
-
-            // Draw every assigned region that has valid GeoJSON.
-            (result.regions || []).forEach(region => {
-                if (
-                    !region.boundary ||
-                    !["Polygon", "MultiPolygon"].includes(
-                        region.boundary.type
-                    )
-                ) {
-                    return;
-                }
-
-                authorityRegionLayer.addData({
-                    type: "Feature",
-                    properties: {
-                        name: region.name,
-                        region_id: region.region_id
-                    },
-                    geometry: region.boundary
-                });
-            });
-
             const issues = result.issues || [];
 
             issues.forEach(issue => {

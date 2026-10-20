@@ -121,37 +121,111 @@ foreach ($issues as &$issue) {
 unset($issue);
 
 /*
+ * Collect the polygons that make up a region's shape.
+ *
+ * A region with its own stored boundary (a district) uses it. A region
+ * without one (such as "Delhi") is drawn as the combination of the
+ * boundaries of the regions below it.
+ */
+function collectRegionPolygons($regionId, $regionsById, $childrenOf, &$seen)
+{
+    if (isset($seen[$regionId])) {
+        return [];
+    }
+
+    $seen[$regionId] = true;
+
+    $stored = $regionsById[$regionId]['boundary_geojson'] ?? null;
+    $geometry = $stored ? json_decode($stored, true) : null;
+
+    if (is_array($geometry)) {
+
+        if (($geometry['type'] ?? '') === 'Polygon') {
+            return [$geometry['coordinates']];
+        }
+
+        if (($geometry['type'] ?? '') === 'MultiPolygon') {
+            return $geometry['coordinates'];
+        }
+    }
+
+    $polygons = [];
+
+    foreach ($childrenOf[$regionId] ?? [] as $childId) {
+        $polygons = array_merge(
+            $polygons,
+            collectRegionPolygons($childId, $regionsById, $childrenOf, $seen)
+        );
+    }
+
+    return $polygons;
+}
+
+/*
  * Fetch the active geographic regions assigned
  * to the logged-in authority.
  */
 $regionStmt = $pdo->prepare("
     SELECT
+        r.id,
         r.region_id,
-        r.name,
-        r.boundary_geojson AS boundary_geojson
+        r.name
     FROM authority_regions ar
     INNER JOIN regions r
         ON r.id = ar.region_id
     WHERE ar.authority_id = ?
       AND ar.is_active = TRUE
       AND r.is_active = TRUE
-      AND r.boundary_geojson IS NOT NULL
 ");
 
 $regionStmt->execute([$authorityId]);
 
-$regions = $regionStmt->fetchAll(PDO::FETCH_ASSOC);
+$assignedRegions = $regionStmt->fetchAll(PDO::FETCH_ASSOC);
 
-foreach ($regions as &$region) {
-    $region['boundary'] = json_decode(
-        $region['boundary_geojson'],
-        true
-    );
+// Every active region, so parent regions can be built from their children.
+$regionsById = [];
+$childrenOf = [];
 
-    unset($region['boundary_geojson']);
+$allRegionRows = $pdo->query("
+    SELECT id, parent_region_id, boundary_geojson
+    FROM regions
+    WHERE is_active = TRUE
+")->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($allRegionRows as $row) {
+
+    $regionsById[(int) $row['id']] = $row;
+
+    if ($row['parent_region_id'] !== null) {
+        $childrenOf[(int) $row['parent_region_id']][] = (int) $row['id'];
+    }
 }
 
-unset($region);
+$regions = [];
+
+foreach ($assignedRegions as $assigned) {
+
+    $seen = [];
+
+    $polygons = collectRegionPolygons(
+        (int) $assigned['id'],
+        $regionsById,
+        $childrenOf,
+        $seen
+    );
+
+    if (count($polygons) === 0) {
+        continue;
+    }
+
+    $regions[] = [
+        'region_id' => $assigned['region_id'],
+        'name' => $assigned['name'],
+        'boundary' => count($polygons) === 1
+            ? ['type' => 'Polygon', 'coordinates' => $polygons[0]]
+            : ['type' => 'MultiPolygon', 'coordinates' => $polygons]
+    ];
+}
 
 echo json_encode([
     'success' => true,
