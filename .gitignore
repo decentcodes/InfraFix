@@ -3,6 +3,8 @@ includes/db.php
 database/pois.sql
 delhi_11_districts.geojson
 database/structure.sql
+backups/
+Deployment.md
 
 # User uploads (keep the folder and its rules)
 uploads/reports/*

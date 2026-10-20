@@ -86,6 +86,36 @@ function selected(string $current, string $option): string
                 <p id="settings-message" class="form-message"></p>
             </form>
 
+            <!-- Navigation -->
+
+            <div class="dashboard-section">
+
+                <a
+                    href="dashboard.php"
+                    class="btn btn-secondary"
+                >
+                    Back to Dashboard
+                </a>
+
+            </div>
+
+            <div class="dashboard-section">
+                <div class="dashboard-card">
+                    <h3>Database backup</h3>
+                    <p>
+                        Download a full copy of the database as an .sql file.
+                        Keep it private: it contains phone numbers and password hashes.
+                    </p>
+                    <form method="post" action="../../api/admin/backup-database.php">
+                        <input type="hidden" name="csrf_token"
+                            value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit" class="btn btn-secondary">
+                            Download database backup
+                        </button>
+                    </form>
+                </div>
+            </div>
+
         </div>
     </div>
 
