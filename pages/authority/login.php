@@ -15,6 +15,10 @@ require_once __DIR__ . '/../../includes/header.php';
 
     <div class="auth-card">
 
+        <a href="../../index.php" class="auth-back-link">
+            &larr; Back
+        </a>
+
         <h1>Authority Login</h1>
 
         <p class="auth-subtitle">

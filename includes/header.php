@@ -11,9 +11,50 @@ if (strpos($scriptPath, '/pages/authority/') !== false) {
     $logoHref = '../citizen/home.php';
     $portalName = 'Citizen';
 }
+
+/*
+ * Page titles, keyed by "folder/file.php". A page can override its title
+ * by setting $pageTitle before including this file.
+ */
+$pageTitles = [
+    'admin/dashboard.php' => 'Admin Dashboard',
+    'admin/login.php' => 'Admin Login',
+    'admin/request-details.php' => 'Access Request Details',
+    'admin/requests.php' => 'Access Requests',
+    'admin/settings.php' => 'Platform Settings',
+    'authority/dashboard.php' => 'Authority Dashboard',
+    'authority/evidence.php' => 'Issue Evidence',
+    'authority/issue-details.php' => 'Issue Details',
+    'authority/issue-reports.php' => 'Issue Reports',
+    'authority/issues.php' => 'Issues',
+    'authority/login.php' => 'Authority Login',
+    'authority/profile.php' => 'Authority Profile',
+    'authority/reports.php' => 'Reports',
+    'authority/request-access.php' => 'Request Authority Access',
+];
+
+$pageKey = basename(dirname($scriptPath)) . '/' . basename($scriptPath);
+
+if (!isset($pageTitle)) {
+    $pageTitle = $pageTitles[$pageKey] ?? '';
+}
 ?>
 
-<?php require_once __DIR__ . '/favicon.php'; ?>
+<?php
+/*
+ * Pages that write their own <head> (citizen pages and citizen login)
+ * already printed the favicon and a <title>. require_once returns true
+ * when favicon.php was already included, so only the other pages print
+ * a title here.
+ */
+$pageWroteOwnHead = (require_once __DIR__ . '/favicon.php') === true;
+
+if (!$pageWroteOwnHead) {
+    echo '<title>'
+        . htmlspecialchars(($pageTitle !== '' ? $pageTitle . ' • ' : '') . 'InfraFix')
+        . "</title>\n";
+}
+?>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script>

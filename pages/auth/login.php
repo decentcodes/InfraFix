@@ -29,6 +29,10 @@ if (isCitizenLoggedIn()) {
 
             <div class="auth-card">
 
+                <a href="../../index.php" class="auth-back-link">
+                    &larr; Back
+                </a>
+
                 <div class="auth-header">
                     <h1>Welcome back</h1>
                     <p>Continue with your phone number</p>
